@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="help_cpu_meaning" formatted="false">Доля суммарного времени CPU, занятого работой на устройстве за интервал между двумя замерами.</string>
+    <string name="help_cpu_units" formatted="false">Проценты, 0–100. Вычисляется по изменениям счётчиков /proc/stat; простой и ожидание ввода-вывода исключены из занятого времени.</string>
+    <string name="help_cpu_impact" formatted="false">Длительная высокая загрузка может оставлять меньше времени другим задачам, увеличивать задержки отклика и нагрев.</string>
+    <string name="help_cpu_reading" formatted="false">Сопоставляйте длительную нагрузку с ожиданием CPU, задержкой пробы и тепловым статусом. Краткий пик допустим. Низкое среднее по устройству может скрывать перегрузку одного ядра.</string>
+    <string name="help_cpu_example" formatted="false">80% означает, что за интервал было занято 80% суммарного учтённого времени CPU; это не доля процесса агента.</string>
+    <string name="help_cpu_limits" formatted="false">Android может запрещать чтение /proc/stat. Пропущенное значение остаётся недоступным. Ожидание CPU и задержка пробы дают отдельные признаки, но не восстанавливают этот процент.</string>
+    <string name="help_cpu_state" formatted="false">Входит в нагрузку CPU. Пороги по умолчанию: 80%, 90%, 95%; уровень меняется с учётом временных окон. Настройки сессии могут отличаться.</string>
+    <string name="help_cpu_source" formatted="false">Счётчики CPU устройства: /proc/stat. После старта или сброса нужны два корректных чтения.</string>
+    <string name="help_cpu_wait_meaning" formatted="false">Время, когда отдельный поток пробы был готов выполняться, но ожидал CPU в очереди планировщика между двумя пробами.</string>
+    <string name="help_cpu_wait_units" formatted="false">Миллисекунды, накопленные за измеренный интервал. Разность счётчиков ожидания потока переводится из наносекунд.</string>
+    <string name="help_cpu_wait_impact" formatted="false">Рост указывает, что этому потоку было сложнее получить время CPU. Такая конкуренция может задерживать задачи приложений, но другие потоки могут вести себя иначе.</string>
+    <string name="help_cpu_wait_reading" formatted="false">Сравнивайте интервалы похожей длительности и повторяющийся рост вместе с задержкой пробы. Ноль допустим; универсальный порог предупреждения не задаётся.</string>
+    <string name="help_cpu_wait_example" formatted="false">20 мс за интервал пробы 2000 мс означает, что этот поток суммарно ждал выполнения 20 мс. Это не означает перегрузку всего устройства на 1%.</string>
+    <string name="help_cpu_wait_limits" formatted="false">Наблюдается только поток пробы агента. Влияют политика планировщика и другие задачи. Запрет чтения или неработающий счётчик не доказывают отсутствия конкуренции. Пауза, сон и сброс разрывают интервал.</string>
+    <string name="help_cpu_wait_state" formatted="false">Не влияет на нагрузку CPU и общую оценку производительности. Остаётся отдельным косвенным признаком даже при доступной системной загрузке CPU.</string>
+    <string name="help_cpu_wait_source" formatted="false">Поток пробы: /proc/self/task/&lt;tid&gt;/schedstat, второй счётчик. Доступность проверяется внутри APK.</string>
+    <string name="help_probe_delay_meaning" formatted="false">Насколько позже запланированного момента поток пробы фактически начал выполнение.</string>
+    <string name="help_probe_delay_units" formatted="false">Миллисекунды опоздания каждой пробы по монотонным часам активности устройства. Это задержка планирования, а не длительность запуска приложения.</string>
+    <string name="help_probe_delay_impact" formatted="false">Повторяющиеся задержки могут сопровождать плохой отклик, когда задачи не успевают выполняться вовремя.</string>
+    <string name="help_probe_delay_reading" formatted="false">Ищите повторяющиеся пики и сопоставляйте их с ожиданием CPU и тепловым статусом. Небольшие задержки ожидаемы; одно значение не определяет узкое место.</string>
+    <string name="help_probe_delay_example" formatted="false">Проба, запланированная на отметку активности 5000 мс и начавшаяся на 5025 мс, имеет задержку 25 мс.</string>
+    <string name="help_probe_delay_limits" formatted="false">Возможны конкуренция за CPU, сборка мусора и ограничения планирования Android. Глубокий сон исключается сбросом базового замера; недоступные и устаревшие пробы пропускаются. Универсальная граница нормы не задаётся.</string>
+    <string name="help_probe_delay_state" formatted="false">Не влияет на нагрузку CPU и общую оценку производительности. Может оставаться доступной при запрете счётчиков /proc.</string>
+    <string name="help_probe_delay_source" formatted="false">Отдельный поток пробы и монотонный таймер активности. Используется время пробы, а не более поздней записи в базу.</string>
+    <string name="help_memory_total_meaning" formatted="false">Общий объём RAM, доступный операционной системе на этом устройстве.</string>
+    <string name="help_memory_total_units" formatted="false">Байты; отображаются как MiB или GiB. 1 MiB = 1048576 байт. Читается поле Android totalMem.</string>
+    <string name="help_memory_total_impact" formatted="false">Задаёт ёмкость для оценки доступной памяти; меньший объём оставляет меньше места для одновременных задач.</string>
+    <string name="help_memory_total_reading" formatted="false">Обычно стабилен. Оценивайте доступные байты вместе с общим объёмом, а не сравнивайте свободную память разных телефонов напрямую.</string>
+    <string name="help_memory_total_example" formatted="false">Если устройство сообщает 1024 MiB всего и 128 MiB доступно, доля доступной памяти составляет 12,5%.</string>
+    <string name="help_memory_total_limits" formatted="false">Это системная RAM, а не размер кучи приложения или хранилища. Аппаратные резервы могут уменьшать значение относительно паспортного объёма. Потребители памяти здесь не определяются.</string>
+    <string name="help_memory_total_state" formatted="false">Используется в знаменателе доли доступной памяти, которая входит в нагрузку памяти. Сам общий объём не задаёт уровень.</string>
+    <string name="help_memory_total_source" formatted="false">Память устройства: ActivityManager.getMemoryInfo(), MemoryInfo.totalMem.</string>
+    <string name="help_memory_available_meaning" formatted="false">RAM, которую Android в данный момент считает доступной для новой работы.</string>
+    <string name="help_memory_available_units" formatted="false">Байты, отображаемые как MiB или GiB; поле availMem читается при каждом сборе.</string>
+    <string name="help_memory_available_impact" formatted="false">Длительное снижение может уменьшать запас для новых выделений памяти и сопровождать её освобождение системой, перезапуски приложений или задержки задач.</string>
+    <string name="help_memory_available_reading" formatted="false">Сопоставляйте с общим объёмом RAM, доступным процентом и флагом нехватки памяти. Снижение после запуска приложений может быть нормальным; повторяющееся падение требует анализа.</string>
+    <string name="help_memory_available_example" formatted="false">128 MiB доступно на устройстве с 1024 MiB — это 12,5%; те же 128 MiB на более ёмком устройстве составляют меньшую долю.</string>
+    <string name="help_memory_available_limits" formatted="false">Это не просто неиспользуемая физическая память и не свободная куча одного приложения. Android управляет кешами; значение само по себе не доказывает утечку и не гарантирует успешное выделение памяти.</string>
+    <string name="help_memory_available_state" formatted="false">Используется для расчёта процента доступной памяти. Нагрузка памяти также учитывает системный флаг её нехватки.</string>
+    <string name="help_memory_available_source" formatted="false">Память устройства: ActivityManager.getMemoryInfo(), MemoryInfo.availMem.</string>
+    <string name="help_memory_percent_meaning" formatted="false">Доля общей RAM, которую Android сейчас считает доступной.</string>
+    <string name="help_memory_percent_units" formatted="false">Проценты, 0–100: доступные байты делятся на общий объём и умножаются на 100.</string>
+    <string name="help_memory_percent_impact" formatted="false">Длительно низкая доля может указывать на малый запас для одновременных приложений и новых выделений памяти.</string>
+    <string name="help_memory_percent_reading" formatted="false">Чем меньше значение, тем меньше доступный запас. Пороги нагрузки по умолчанию: 15%, 10%, 5%; это настройки приложения, а не универсальные пределы устройства.</string>
+    <string name="help_memory_percent_example" formatted="false">128 MiB доступно из 1024 MiB — это 12,5%, зона предупреждения по умолчанию до фильтрации временными окнами.</string>
+    <string name="help_memory_percent_limits" formatted="false">Оценивайте вместе с флагом нехватки памяти и абсолютными байтами. Важны управление кешами и задачи устройства. Краткое падение не доказывает утечку.</string>
+    <string name="help_memory_percent_state" formatted="false">Входит в нагрузку памяти по убывающим порогам. Флаг Android low-memory=true задаёт исходный критический уровень; настроенные временные окна продолжают действовать.</string>
+    <string name="help_memory_percent_source" formatted="false">Вычисляется из MemoryInfo.availMem / totalMem. Пороги сессии могут отличаться от текущих настроек.</string>
+    <string name="help_memory_low_meaning" formatted="false">Флаг Android, указывающий на текущее состояние нехватки памяти устройства.</string>
+    <string name="help_memory_low_units" formatted="false">Флаг: 0 — система не сигнализирует о нехватке, 1 — сигнализирует. Это не число байт и не процент.</string>
+    <string name="help_memory_low_impact" formatted="false">Значение 1 — системный сигнал об ограниченной памяти, при котором может страдать фоновая работа.</string>
+    <string name="help_memory_low_reading" formatted="false">Повторяющиеся значения 1 — веский повод проверить доступную RAM и поведение приложений. Ноль не гарантирует достаточную кучу каждому приложению.</string>
+    <string name="help_memory_low_example" formatted="false">При low-memory=1 исходная оценка памяти становится критической, даже если настроенные процентные пороги дают более низкий уровень.</string>
+    <string name="help_memory_low_limits" formatted="false">Решение принимает Android, и оно зависит от устройства и версии ПО. Флаг не указывает конкретное приложение с утечкой или завершённый процесс.</string>
+    <string name="help_memory_low_state" formatted="false">Задаёт критический исходный уровень нагрузки памяти; окна повышения и восстановления продолжают действовать, поэтому отображаемая оценка может измениться не сразу.</string>
+    <string name="help_memory_low_source" formatted="false">Память устройства: ActivityManager.getMemoryInfo(), MemoryInfo.lowMemory.</string>
+    <string name="help_memory_threshold_meaning" formatted="false">Порог памяти, который Android сообщает для своей оценки нехватки RAM.</string>
+    <string name="help_memory_threshold_units" formatted="false">Байты, отображаемые как MiB или GiB. Это системный порог, а не редактируемая процентная граница AHWOTel.</string>
+    <string name="help_memory_threshold_impact" formatted="false">Помогает объяснить флаг нехватки памяти и абсолютный запас, который Android считает малым.</string>
+    <string name="help_memory_threshold_reading" formatted="false">Сравнивайте доступную память с порогом и фактическим флагом нехватки. Порог даёт контекст, а не отдельный диагноз.</string>
+    <string name="help_memory_threshold_example" formatted="false">Доступные 80 MiB при сообщённом пороге 100 MiB указывают на малый запас; дополнительно проверьте системный флаг.</string>
+    <string name="help_memory_threshold_limits" formatted="false">Политики устройств различаются. Порог не обязан равняться 5%, 10% или 15% RAM и не предсказывает точный момент завершения следующего процесса.</string>
+    <string name="help_memory_threshold_state" formatted="false">Показывается только для диагностики. AHWOTel оценивает нагрузку памяти по доступному проценту и флагу Android, а не прямым сравнением с этим полем.</string>
+    <string name="help_memory_threshold_source" formatted="false">Память устройства: ActivityManager.getMemoryInfo(), MemoryInfo.threshold.</string>
+    <string name="help_storage_total_meaning" formatted="false">Общий размер файловой системы, на которой находится приватный каталог данных приложения.</string>
+    <string name="help_storage_total_units" formatted="false">Байты, отображаемые как MiB или GiB. Читается StatFs.totalBytes для каталога файлов приложения.</string>
+    <string name="help_storage_total_impact" formatted="false">Задаёт ёмкость, относительно которой оценивается оставшийся запас хранилища.</string>
+    <string name="help_storage_total_reading" formatted="false">Обычно стабилен. Сопоставляйте доступные байты и процент на этой же файловой системе; изменение ёмкости может отражать другое подключение раздела или настройку устройства.</string>
+    <string name="help_storage_total_example" formatted="false">Если файловая система имеет 16 GiB всего и 4 GiB доступно, доступная доля равна 25%.</string>
+    <string name="help_storage_total_limits" formatted="false">Это не размер данных AHWOTel, не сумма всех дисков устройства и не обязательно паспортная ёмкость накопителя. Файловую систему могут разделять другие приложения.</string>
+    <string name="help_storage_total_state" formatted="false">Используется в знаменателе процента доступного хранилища. Сама ёмкость не задаёт его нагрузку.</string>
+    <string name="help_storage_total_source" formatted="false">Файловая система данных приложения: StatFs(context.filesDir), totalBytes.</string>
+    <string name="help_storage_available_meaning" formatted="false">Свободное место, доступное обычным приложениям на файловой системе с данными AHWOTel.</string>
+    <string name="help_storage_available_units" formatted="false">Байты, отображаемые как MiB или GiB; читается StatFs.availableBytes.</string>
+    <string name="help_storage_available_impact" formatted="false">Малый запас может препятствовать записи, загрузкам или росту баз данных и влиять на приложения, использующие тот же раздел.</string>
+    <string name="help_storage_available_reading" formatted="false">Следите за длительным снижением и сравнивайте с общей ёмкостью и доступным процентом. Рост может следовать за очисткой любого приложения.</string>
+    <string name="help_storage_available_example" formatted="false">2 GiB доступно на файловой системе 16 GiB — это 12,5% оставшейся ёмкости.</string>
+    <string name="help_storage_available_limits" formatted="false">Резервы файловой системы исключены. Это не квота истории приложения и не гарантия успеха любой записи: возможны ограничения системы или приложения.</string>
+    <string name="help_storage_available_state" formatted="false">Используется для расчёта доступного процента, входящего в нагрузку хранилища. Размер истории AHWOTel отдельно показан в диагностике.</string>
+    <string name="help_storage_available_source" formatted="false">Файловая система данных приложения: StatFs(context.filesDir), availableBytes.</string>
+    <string name="help_storage_used_meaning" formatted="false">Ёмкость файловой системы, недоступная обычным приложениям: общий объём минус доступные байты.</string>
+    <string name="help_storage_used_units" formatted="false">Байты, отображаемые как MiB или GiB. Включает занятое место и ёмкость, зарезервированную от обычных приложений.</string>
+    <string name="help_storage_used_impact" formatted="false">Рост уменьшает доступный запас и со временем может мешать записи или обновлениям на общей файловой системе.</string>
+    <string name="help_storage_used_reading" formatted="false">Оценивайте вместе с доступным процентом. Измерение не позволяет приписать рост AHWOTel или другому конкретному приложению.</string>
+    <string name="help_storage_used_example" formatted="false">При 16 GiB всего и 4 GiB доступно вычисленное значение составляет 12 GiB.</string>
+    <string name="help_storage_used_limits" formatted="false">Это не размер каталога и не точная сумма размеров пользовательских файлов, поскольку включены резервы. Хранилище самого AHWOTel отдельно показано в диагностике.</string>
+    <string name="help_storage_used_state" formatted="false">Отдельный порог к этому полю не применяется. Нагрузка хранилища использует доступный процент.</string>
+    <string name="help_storage_used_source" formatted="false">Вычисляется как StatFs.totalBytes − StatFs.availableBytes на файловой системе данных приложения.</string>
+    <string name="help_storage_percent_meaning" formatted="false">Процент ёмкости файловой системы данных приложения, доступный обычным приложениям.</string>
+    <string name="help_storage_percent_units" formatted="false">Проценты, 0–100: доступные байты / общий объём × 100.</string>
+    <string name="help_storage_percent_impact" formatted="false">Малый запас может влиять на запись, обновления и приложения, использующие ту же файловую систему.</string>
+    <string name="help_storage_percent_reading" formatted="false">Чем меньше значение, тем сильнее ограничение. Пороги нагрузки по умолчанию: 15%, 10%, 5%; учитывайте также свободные байты и ожидаемый рост данных.</string>
+    <string name="help_storage_percent_example" formatted="false">2 GiB доступно из 16 GiB — это 12,5%, зона предупреждения по умолчанию до временной фильтрации.</string>
+    <string name="help_storage_percent_limits" formatted="false">Пороги являются настройками приложения, а не универсальными точками отказа файловой системы. Доступная ёмкость не измеряет скорость накопителя или задержку ввода-вывода.</string>
+    <string name="help_storage_percent_state" formatted="false">Входит в нагрузку хранилища по убывающим порогам с настроенными окнами повышения и восстановления.</string>
+    <string name="help_storage_percent_source" formatted="false">Вычисляется из StatFs.availableBytes и totalBytes файловой системы данных приложения.</string>
+    <string name="help_thermal_meaning" formatted="false">Статус тепловых ограничений Android для устройства, а не температура в градусах.</string>
+    <string name="help_thermal_units" formatted="false">Коды: 0 — нет ограничений, 1 — лёгкие, 2 — умеренные, 3 — сильные, 4 — критические, 5 — аварийные, 6 — отключение.</string>
+    <string name="help_thermal_impact" formatted="false">Более высокий уровень указывает на сильнее выраженные ограничения из-за нагрева, которые могут снижать производительность CPU/GPU и задерживать работу.</string>
+    <string name="help_thermal_reading" formatted="false">Ищите длительное повышение одновременно с замедлением задач. Разность числовых кодов означает шаги категорий, а не одинаковую разность температур.</string>
+    <string name="help_thermal_example" formatted="false">Статус 3 означает, что Android сообщает о сильных тепловых ограничениях. Это не 3 градуса и не 3% нагрузки.</string>
+    <string name="help_thermal_limits" formatted="false">Требуется Android API 29 и поддержка устройства. Производитель определяет датчики и политику; статус не указывает один конкретный горячий компонент. Сопоставляйте с тепловым запасом и температурой батареи.</string>
+    <string name="help_thermal_state" formatted="false">Входит в тепловую нагрузку. Границы по умолчанию — статусы 1, 2, 3 с последующими временными окнами; коды Android и уровни оценки приложения имеют разные шкалы.</string>
+    <string name="help_thermal_source" formatted="false">Тепловая политика устройства: PowerManager.currentThermalStatus.</string>
+    <string name="help_headroom_meaning" formatted="false">Оценка Android того, какая часть теплового диапазона сейчас используется. Несмотря на название, большее значение означает приближение к сильным ограничениям, а не больший свободный запас.</string>
+    <string name="help_headroom_units" formatted="false">Безразмерная величина. 1,0 — ориентир сильных тепловых ограничений; значения могут превышать 1,0. AHWOTel запрашивает текущую оценку без прогноза.</string>
+    <string name="help_headroom_impact" formatted="false">Восходящий тренд может помочь объяснить снижение производительности из-за нагрева.</string>
+    <string name="help_headroom_reading" formatted="false">Сопоставляйте динамику с тепловым статусом. Ноль не является температурой; 0,5 не гарантирует половину оставшейся производительности CPU. Значения выше 1 не имеют фиксированного соответствия более высоким статусам.</string>
+    <string name="help_headroom_example" formatted="false">Рост с 0,7 до 0,95 означает приближение к ориентиру сильных ограничений 1,0; это не означает занятость CPU на 95%.</string>
+    <string name="help_headroom_limits" formatted="false">Требуется API 30 и поддержка устройства. Опрос выполняется не чаще одного раза в 10 секунд; фактическая частота зависит от интервала сбора. Промежутки между значениями ожидаемы. Неподдерживаемые и неконечные значения недоступны; это не прямой датчик CPU.</string>
+    <string name="help_headroom_state" formatted="false">Только информационный показатель; не влияет на тепловую нагрузку и общую оценку. Они используют код теплового статуса.</string>
+    <string name="help_headroom_source" formatted="false">Оценка устройства: PowerManager.getThermalHeadroom(0), не чаще одного раза в 10 секунд.</string>
+    <string name="help_battery_meaning" formatted="false">Оставшийся заряд батареи по данным Android относительно сообщённой шкалы полного заряда.</string>
+    <string name="help_battery_units" formatted="false">Проценты, 0–100: level / scale × 100, читается из сообщения о батарее.</string>
+    <string name="help_battery_impact" formatted="false">Снижение отражает расход доступного заряда и помогает оценивать возможность длительной работы без питания.</string>
+    <string name="help_battery_reading" formatted="false">Сравнивайте наклон графика при похожих задачах и учитывайте зарядку. Один замер не измеряет мощность потребления или оставшееся время работы.</string>
+    <string name="help_battery_example" formatted="false">Изменение с 80% до 75% — снижение на 5 процентных пунктов; оно не определяет мощность в ваттах, потреблённую агентом.</string>
+    <string name="help_battery_limits" formatted="false">Оценка заряда может быть грубой и зависеть от устройства. Питание USB меняет условия; по этой метрике нельзя выделить расход одного приложения или измерить здоровье батареи.</string>
+    <string name="help_battery_state" formatted="false">Только информационный показатель; не влияет на общую оценку производительности.</string>
+    <string name="help_battery_source" formatted="false">Батарея устройства: ACTION_BATTERY_CHANGED, EXTRA_LEVEL и EXTRA_SCALE.</string>
+    <string name="help_charging_meaning" formatted="false">Признак того, что Android сообщает зарядку или полный заряд; AHWOTel объединяет эти состояния в один флаг.</string>
+    <string name="help_charging_units" formatted="false">0 — другой сообщённый статус батареи; 1 — зарядка или полный заряд. При отсутствии статуса значения нет.</string>
+    <string name="help_charging_impact" formatted="false">Даёт контекст для уровня заряда и температуры: внешнее питание может менять расход батареи и нагрев устройства.</string>
+    <string name="help_charging_reading" formatted="false">Учитывайте флаг при сравнении сессий от батареи и от внешнего питания. Единица не обязательно означает, что в этот момент в батарею течёт ток.</string>
+    <string name="help_charging_example" formatted="false">Полностью заряженная батарея даёт 1 даже при неизменном уровне 100%.</string>
+    <string name="help_charging_limits" formatted="false">Флаг не сообщает ток зарядки, мощность адаптера или тип кабеля. Статусы Android «неизвестно», «не заряжается» и «разряжается» в этой реализации дают 0.</string>
+    <string name="help_charging_state" formatted="false">Только информационный показатель; не влияет на общую оценку производительности.</string>
+    <string name="help_charging_source" formatted="false">Батарея устройства: ACTION_BATTERY_CHANGED, EXTRA_STATUS; CHARGING и FULL преобразуются в 1.</string>
+    <string name="help_temperature_meaning" formatted="false">Температура батареи, сообщаемая Android. Это показатель батареи, а не температура CPU.</string>
+    <string name="help_temperature_units" formatted="false">Градусы Цельсия. Сообщённое целое число в десятых долях градуса делится на 10.</string>
+    <string name="help_temperature_impact" formatted="false">Рост температуры батареи может сопровождать зарядку, рабочую нагрузку или тёплую среду и помогать объяснить тепловое поведение.</string>
+    <string name="help_temperature_reading" formatted="false">Сравнивайте динамику при похожих условиях с зарядкой и тепловым статусом. Пределы зависят от устройства; универсальный порог тревоги для температуры батареи не задаётся.</string>
+    <string name="help_temperature_example" formatted="false">Исходное значение 350 преобразуется в 35 °C. Это пример пересчёта, а не рекомендуемый рабочий предел.</string>
+    <string name="help_temperature_limits" formatted="false">Доступность и точность датчика зависят от устройства. Температура батареи может отличаться от CPU и корпуса; она не доказывает причину теплового ограничения.</string>
+    <string name="help_temperature_state" formatted="false">Только информационный показатель; не влияет на тепловую нагрузку и общую оценку. Тепловая нагрузка использует статус Android.</string>
+    <string name="help_temperature_source" formatted="false">Батарея устройства: ACTION_BATTERY_CHANGED, EXTRA_TEMPERATURE / 10.</string>
+    <string name="help_cpu_pressure_meaning" formatted="false">Оценка ограничений CPU после временной фильтрации, вычисленная на основе загрузки CPU.</string>
+    <string name="help_cpu_pressure_units" formatted="false">Код уровня: 0 — норма, 1 — предупреждение, 2 — ухудшение, 3 — критично. Это не проценты и не физическое измерение.</string>
+    <string name="help_cpu_pressure_impact" formatted="false">Длительно повышенный уровень выделяет условия CPU, которые могут мешать быстрому или надёжному выполнению задач.</string>
+    <string name="help_cpu_pressure_reading" formatted="false">Границы по умолчанию: 80%, 90%, 95%. По умолчанию повышение должно сохраняться 30 секунд, восстановление — 60 секунд. Изменение кандидата запускает его окно заново.</string>
+    <string name="help_cpu_pressure_example" formatted="false">При настройках по умолчанию 92% даёт исходный уровень ухудшения. Для перехода от нормы к отображаемому уровню 2 кандидат должен сохраняться не менее 30 секунд.</string>
+    <string name="help_cpu_pressure_limits" formatted="false">Пороги и окна задаются для сессии. Разрывы сбрасывают фильтр; недоступный вход не даёт оценки. Начальная норма может означать незавершённое окно. В старых сессиях настройки могут отличаться.</string>
+    <string name="help_cpu_pressure_state" formatted="false">Входит в общую оценку как один из доступных ресурсных уровней. Общая оценка равна их максимуму.</string>
+    <string name="help_cpu_pressure_source" formatted="false">Вычисляется AHWOTel PressureWindow на основе загрузки CPU; не является кодом уровня Android.</string>
+    <string name="help_memory_pressure_meaning" formatted="false">Оценка ограничений памяти после временной фильтрации, вычисленная на основе процента доступной RAM и флага её нехватки.</string>
+    <string name="help_memory_pressure_units" formatted="false">Код уровня: 0 — норма, 1 — предупреждение, 2 — ухудшение, 3 — критично. Это не проценты и не физическое измерение.</string>
+    <string name="help_memory_pressure_impact" formatted="false">Длительно повышенный уровень выделяет условия памяти, которые могут мешать быстрому или надёжному выполнению задач.</string>
+    <string name="help_memory_pressure_reading" formatted="false">Границы по умолчанию: 15%, 10%, 5% (по убыванию). По умолчанию повышение должно сохраняться 30 секунд, восстановление — 60 секунд. Изменение кандидата запускает его окно заново. Флаг нехватки памяти Android задаёт исходный критический уровень с сохранением временного окна.</string>
+    <string name="help_memory_pressure_example" formatted="false">При настройках по умолчанию 8% доступно даёт исходный уровень ухудшения. Для перехода от нормы к отображаемому уровню 2 кандидат должен сохраняться не менее 30 секунд.</string>
+    <string name="help_memory_pressure_limits" formatted="false">Пороги и окна задаются для сессии. Разрывы сбрасывают фильтр; недоступный вход не даёт оценки. Начальная норма может означать незавершённое окно. В старых сессиях настройки могут отличаться.</string>
+    <string name="help_memory_pressure_state" formatted="false">Входит в общую оценку как один из доступных ресурсных уровней. Общая оценка равна их максимуму.</string>
+    <string name="help_memory_pressure_source" formatted="false">Вычисляется AHWOTel PressureWindow на основе процента доступной RAM и флага её нехватки; не является кодом уровня Android.</string>
+    <string name="help_storage_pressure_meaning" formatted="false">Оценка ограничений хранилища после временной фильтрации, вычисленная на основе процента доступной файловой системы.</string>
+    <string name="help_storage_pressure_units" formatted="false">Код уровня: 0 — норма, 1 — предупреждение, 2 — ухудшение, 3 — критично. Это не проценты и не физическое измерение.</string>
+    <string name="help_storage_pressure_impact" formatted="false">Длительно повышенный уровень выделяет условия хранилища, которые могут мешать быстрому или надёжному выполнению задач.</string>
+    <string name="help_storage_pressure_reading" formatted="false">Границы по умолчанию: 15%, 10%, 5% (по убыванию). По умолчанию повышение должно сохраняться 30 секунд, восстановление — 60 секунд. Изменение кандидата запускает его окно заново.</string>
+    <string name="help_storage_pressure_example" formatted="false">При настройках по умолчанию 8% доступно даёт исходный уровень ухудшения. Для перехода от нормы к отображаемому уровню 2 кандидат должен сохраняться не менее 30 секунд.</string>
+    <string name="help_storage_pressure_limits" formatted="false">Пороги и окна задаются для сессии. Разрывы сбрасывают фильтр; недоступный вход не даёт оценки. Начальная норма может означать незавершённое окно. В старых сессиях настройки могут отличаться.</string>
+    <string name="help_storage_pressure_state" formatted="false">Входит в общую оценку как один из доступных ресурсных уровней. Общая оценка равна их максимуму.</string>
+    <string name="help_storage_pressure_source" formatted="false">Вычисляется AHWOTel PressureWindow на основе процента доступной файловой системы; не является кодом уровня Android.</string>
+    <string name="help_thermal_pressure_meaning" formatted="false">Оценка ограничений нагрева после временной фильтрации, вычисленная на основе теплового статуса Android.</string>
+    <string name="help_thermal_pressure_units" formatted="false">Код уровня: 0 — норма, 1 — предупреждение, 2 — ухудшение, 3 — критично. Это не проценты и не физическое измерение.</string>
+    <string name="help_thermal_pressure_impact" formatted="false">Длительно повышенный уровень выделяет условия нагрева, которые могут мешать быстрому или надёжному выполнению задач.</string>
+    <string name="help_thermal_pressure_reading" formatted="false">Границы по умолчанию: 1, 2, 3. По умолчанию повышение должно сохраняться 30 секунд, восстановление — 60 секунд. Изменение кандидата запускает его окно заново.</string>
+    <string name="help_thermal_pressure_example" formatted="false">При настройках по умолчанию статус 2 даёт исходный уровень ухудшения. Для перехода от нормы к отображаемому уровню 2 кандидат должен сохраняться не менее 30 секунд.</string>
+    <string name="help_thermal_pressure_limits" formatted="false">Пороги и окна задаются для сессии. Разрывы сбрасывают фильтр; недоступный вход не даёт оценки. Начальная норма может означать незавершённое окно. В старых сессиях настройки могут отличаться.</string>
+    <string name="help_thermal_pressure_state" formatted="false">Входит в общую оценку как один из доступных ресурсных уровней. Общая оценка равна их максимуму.</string>
+    <string name="help_thermal_pressure_source" formatted="false">Вычисляется AHWOTel PressureWindow на основе теплового статуса Android; не является кодом уровня Android.</string>
+    <string name="help_state_meaning" formatted="false">Общая оценка по худшему из доступных уровней нагрузки CPU, памяти, хранилища и нагрева.</string>
+    <string name="help_state_units" formatted="false">Код: 0 — норма, 1 — предупреждение, 2 — ухудшение, 3 — критично. Максимум доступных отфильтрованных уровней; если нет ни одного, значения нет.</string>
+    <string name="help_state_impact" formatted="false">Помогает находить периоды, когда хотя бы один наблюдаемый ресурс может ограничивать работу, и направляет дальнейшую проверку на этот ресурс.</string>
+    <string name="help_state_reading" formatted="false">Откройте отдельные графики нагрузки, чтобы выяснить причину повышения. Норма означает отсутствие повышенного доступного уровня сейчас, но не гарантирует исправность устройства или приложения.</string>
+    <string name="help_state_example" formatted="false">Если нагрузка памяти равна 2, хранилища — 0, а CPU и нагрев недоступны, общая оценка равна 2 и является частичной.</string>
+    <string name="help_state_limits" formatted="false">Отсутствующие ресурсы исключаются, а не считаются доказанно нормальными. Косвенные CPU-сигналы, батарея и тепловой запас исключены. Ресурсные окна задерживают изменения; результат не устанавливает причину проблемы и не измеряет отклик приложения.</string>
+    <string name="help_state_state" formatted="false">Это итоговая оценка. Берётся максимум после применения каждым ресурсом своего окна повышения или восстановления; второго общего временного окна нет.</string>
+    <string name="help_state_source" formatted="false">Вычисляется AHWOTel из CPU_PRESSURE, MEMORY_PRESSURE, STORAGE_PRESSURE и THERMAL_PRESSURE.</string>
+</resources>

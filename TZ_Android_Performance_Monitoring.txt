@@ -1,0 +1,270 @@
+ТЕХНИЧЕСКОЕ ЗАДАНИЕ Система мониторинга производительности
+Android-устройств
+
+1.  НАЗНАЧЕНИЕ Разработать систему удалённого мониторинга общей
+    производительности корпоративных Android-устройств. Мониторинг
+    запускается по команде на заданный период и должен определять
+    интервалы деградации по памяти, CPU, файловому хранилищу и thermal
+    state. Бизнес-приложение не модифицируется.
+
+2.  ИСХОДНЫЕ УСЛОВИЯ Устройства находятся в Internet, могут работать
+    через Wi-Fi, мобильные сети, NAT/CGNAT, динамические IPv4/IPv6.
+    IP-адрес не используется для идентификации. Устройства управляются
+    SOTI MobiControl. Парк включает разные версии Android и OEM:
+    Samsung, Xiaomi/Redmi и потенциально другие. Известные/уточняемые
+    модели: SM-J260F, SM-T225, предположительно SM-T295 и SM-T135, Redmi
+    (модель уточняется). Решение не привязывается к Android 13.
+
+3.  ЦЕЛЕВАЯ АРХИТЕКТУРА SOTI MobiControl -> START/STOP ->
+    PerformanceAgent.apk на Android
+
+    -   SotiCommandReceiver
+    -   MonitoringSessionManager
+    -   MemoryCollector
+    -   CpuCollector
+    -   StorageCollector
+    -   ThermalCollector
+    -   BatteryCollector
+    -   PerformanceStateEvaluator
+    -   OpenTelemetry SDK / OTLP exporter -> OTLP/HTTPS (исходящее
+        соединение) -> OpenTelemetry Collector -> Prometheus или
+        VictoriaMetrics -> Grafana
+
+BusinessApp.apk остаётся без изменений. Входящее сетевое соединение к
+Android не требуется.
+
+4.  PERFORMANCEAGENT.APK Отдельное Android-приложение устанавливается и
+    обновляется через SOTI. В штатном состоянии высокочастотный
+    мониторинг выключен. По команде запускается диагностическая сессия,
+    например: sessionId=… durationSeconds=300 samplingIntervalMs=2000
+    metrics=memory,cpu,storage,thermal reason=INC-…
+
+Агент обязан самостоятельно завершить сессию по timeout даже при потере
+связи. Максимальная длительность должна конфигурироваться.
+
+5.  SOTI MOBICONTROL SOTI используется как control plane для установки,
+    обновления, конфигурации, START/STOP. Способ передачи команды
+    (например script command/sendintent) подтверждается PoC на
+    используемом enrollment и версиях Android.
+
+6.  ИДЕНТИФИКАЦИЯ IP не используется. Применяется стабильный
+    корпоративный device.id, связанный с записью SOTI. В OTel Resource
+    передаются: device.id device.manufacturer device.model os.name
+    os.version agent.version monitoring.session.id monitoring.reason
+
+7.  COLLECTORS Collectors находятся внутри PerformanceAgent.apk и не
+    являются plugins серверного OTel Collector. Каждый collector
+    поддерживает capability detection. Недоступность одной метрики не
+    останавливает сессию.
+
+8.  ПАМЯТЬ Источник: ActivityManager.MemoryInfo. Метрики:
+    device.memory.total_bytes device.memory.available_bytes
+    device.memory.available_percent device.memory.low
+    device.memory.low_threshold_bytes Для pressure приоритетно учитывать
+    available memory и lowMemory, а не только used/total.
+
+9.  ХРАНИЛИЩЕ Источник: android.os.StatFs. Метрики:
+    device.storage.total_bytes device.storage.available_bytes
+    device.storage.used_bytes device.storage.available_percent Пороги
+    STORAGE_PRESSURE конфигурируются.
+
+10. CPU Цель: device.cpu.utilization для устройства целиком. System-wide
+    CPU является главным техническим риском: единый гарантированный
+    публичный API для всех Android/OEM отсутствует. CpuCollector
+    реализуется как набор capability/fallback стратегий. При
+    невозможности измерения: device.cpu.supported=false Остальные
+    collectors продолжают работу.
+
+11. POC CPU Проверить минимум SM-J260F, SM-T225, SM-T295/SM-T135 после
+    подтверждения моделей и имеющийся Redmi. Для каждой комбинации
+    зафиксировать Android version, источник CPU, доступность, точность,
+    sampling rate, screen-off/background/reboot behavior. Результат -
+    compatibility matrix.
+
+12. THERMAL На поддерживаемых Android собирать: device.thermal.status
+    device.thermal.headroom (если доступно) Thermal pressure
+    учитывается, поскольку throttling может снижать производительность
+    при неполной загрузке CPU. Если API недоступен:
+    device.thermal.supported=false.
+
+13. BATTERY Дополнительный контекст: device.battery.level
+    device.battery.charging device.battery.temperature
+
+14. SAMPLING Стандартный интервал активной сессии - 2 секунды.
+    Поддержать конфигурируемые интервалы, например 1/2/5/10 секунд, с
+    минимальным ограничением для защиты от нагрузки агента.
+
+15. PERFORMANCE STATE Передавать исходные метрики и состояние: NORMAL
+    WARNING DEGRADED CRITICAL
+
+Признаки: performance.pressure.cpu performance.pressure.memory
+performance.pressure.storage performance.pressure.thermal
+
+Пороговая логика конфигурируется и использует временные окна, чтобы
+одиночный краткий пик не считался устойчивой деградацией.
+
+Основной результат системы: определить, когда конкретное устройство
+испытывало проблемы и какой ресурс был причиной.
+
+16. OPENTELEMETRY PerformanceAgent использует OpenTelemetry SDK.
+    Собственные collectors публикуют значения через OTel Meter API.
+    Серверный OTel Collector не требует custom receiver.
+
+17. ТРАНСПОРТ Использовать OTLP/HTTP + protobuf через HTTPS TCP/443.
+    Внешний endpoint, например telemetry.company.example. Не выставлять
+    сырые 4317/4318 непосредственно в Internet без защищённого
+    ingress/reverse proxy.
+
+18. АУТЕНТИФИКАЦИЯ PERFORMANCEAGENT В OTEL INGEST Endpoint не принимает
+    анонимную telemetry. Не использовать один постоянный API key/пароль
+    для всего парка и не хранить общий постоянный секрет в APK.
+
+Рекомендуемый production-вариант: mTLS с уникальным client certificate
+на каждое устройство.
+
+PerformanceAgent: - проверяет server certificate; - использует
+уникальный client certificate; - хранит private key в Android
+Keystore; - private key не покидает устройство.
+
+Предпочтительный enrollment: 1) первый запуск PerformanceAgent; 2)
+создание key pair в Android Keystore; 3) формирование CSR; 4) отправка
+CSR в Certificate Enrollment Service/корпоративную PKI; 5) проверка
+bootstrap credential; 6) выдача сертификата устройства.
+
+Bootstrap credential доставляется через SOTI, имеет ограниченный срок
+жизни, привязывается к конкретному устройству и после успешного
+enrollment становится недействительным.
+
+Допускается использование сертификатов, распространяемых SOTI, только
+после PoC, подтверждающего доступ PerformanceAgent к соответствующему
+private key на всех целевых Android/enrollment.
+
+Принципиальная конфигурация OTel receiver:
+
+receivers: otlp: protocols: http: endpoint: 0.0.0.0:4318 tls: cert_file:
+/certs/server.crt key_file: /certs/server.key client_ca_file:
+/certs/device-ca.crt
+
+На внешнем периметре: Internet -> HTTPS:443 + mTLS -> Load
+Balancer/Reverse Proxy -> OTel Collector
+
+mTLS может завершаться на Collector либо на доверенном ingress/reverse
+proxy.
+
+Client certificate должен однозначно соответствовать device.id. На
+ingest-слое желательно проверять соответствие authenticated certificate
+identity и заявленного device.id.
+
+При списании, потере, компрометации или unenrollment должна быть
+возможность отозвать credential одного устройства без смены credentials
+всего парка.
+
+Альтернативный вариант при невозможности mTLS: short-lived JWT/OIDC.
+PerformanceAgent проходит device authentication, получает короткоживущий
+JWT и отправляет: Authorization: Bearer JWT должен содержать как минимум
+sub=device ID, aud=telemetry ingest, exp. Рекомендуемый TTL - 5-30
+минут. Общий статический Bearer Token для парка не применять.
+
+19. OFFLINE BUFFERING При отсутствии Internet данные временно
+    сохраняются в ограниченной локальной очереди и отправляются после
+    восстановления связи. Настраиваются max age и max size; при
+    переполнении удаляются наиболее старые данные.
+
+20. НАГРУЗКА АГЕНТА PoC должен измерить CPU overhead, RAM, battery
+    impact, network traffic и storage overhead самого PerformanceAgent.
+    Особое внимание - слабым устройствам, включая SM-J260F.
+
+21. SCREEN OFF / BACKGROUND Проверить активную сессию при screen on/off
+    и foreground/background бизнес-приложения. При необходимости
+    использовать допустимый Android foreground service только на время
+    диагностической сессии.
+
+22. REBOOT После reboot агент стартует с monitoring=OFF. Старая
+    незавершённая сессия автоматически не продолжается, если это
+    отдельно не утверждено.
+
+23. BACKEND Использовать стандартный OpenTelemetry Collector,
+    Prometheus/VictoriaMetrics и Grafana. Monitoring backend с нуля не
+    разрабатывать.
+
+Grafana должна фильтровать минимум по device.id, monitoring.session.id,
+device.model, Android version и отображать CPU, available RAM, memory
+pressure, storage, storage pressure, thermal и performance state.
+
+24. CAPABILITY MATRIX Агент сообщает поддержку функций, например:
+    memory=true storage=true systemCpu=false thermal=true battery=true
+    Отсутствующая метрика трактуется как UNSUPPORTED, а не 0.
+
+25. ЛОГИ Логировать старт агента, получение команды SOTI,
+    начало/окончание сессии, unsupported collector, ошибки OTLP и
+    authentication. Не логировать private keys, bearer/bootstrap tokens
+    и другие секреты.
+
+26. БЕЗОПАСНОСТЬ Обязательно:
+
+-   HTTPS;
+-   проверка server certificate;
+-   запрет trust-all/insecureSkipVerify;
+-   уникальная identity устройства;
+-   отсутствие общих секретов в APK;
+-   Android Keystore для private key;
+-   индивидуальный revoke;
+-   rate limiting;
+-   ограничение размера OTLP request;
+-   аудит auth failures;
+-   защита bootstrap credential от повторного использования.
+
+27. ЧТО РАЗРАБАТЫВАЕТСЯ Android: PerformanceAgent.apk
+    SotiCommandReceiver MonitoringSessionManager MemoryCollector
+    CpuCollector StorageCollector ThermalCollector BatteryCollector
+    CapabilityDetector PerformanceStateEvaluator OTel integration
+    authentication/enrollment module
+
+Backend: Certificate Enrollment Service - только если существующая
+PKI/SOTI не сможет выполнить enrollment; опциональный orchestration/API
+слой для автоматизации запуска сессий через SOTI.
+
+28. ГОТОВЫЕ КОМПОНЕНТЫ SOTI MobiControl OpenTelemetry SDK OTLP
+    OpenTelemetry Collector Prometheus/VictoriaMetrics Grafana
+    корпоративная CA/PKI (при наличии)
+
+29. ЭТАП 1 - POC Подтвердить:
+
+1)  установку агента через SOTI;
+2)  удалённый START/STOP;
+3)  auto-stop по timeout;
+4)  RAM;
+5)  storage;
+6)  system-wide CPU на разных Android;
+7)  thermal;
+8)  OTLP через Internet/NAT/CGNAT;
+9)  mTLS либо утверждённую альтернативную auth-схему;
+10) screen off/background;
+11) нагрузку агента;
+12) offline/reconnect;
+13) отображение в Grafana.
+
+30. КРИТЕРИЙ УСПЕХА POC Оператор запускает для выбранного устройства
+    мониторинг на 5 минут. В Grafana появляется сессия с device.id,
+    session.id, start/end timestamp и графиками
+    CPU/RAM/Storage/Thermal/Performance State. По окончании времени
+    агент автоматически прекращает высокочастотный сбор.
+
+31. ЭТАП 2 - PRODUCTION После PoC:
+
+-   расширить compatibility matrix;
+-   подобрать production thresholds;
+-   реализовать lifecycle сертификатов и revocation;
+-   настроить rate limiting;
+-   определить retention;
+-   провести нагрузочное тестирование;
+-   провести security review APK и ingest endpoint.
+
+32. ИТОГОВАЯ СХЕМА SOTI -> PerformanceAgent.apk -> OpenTelemetry SDK ->
+    OTLP/HTTPS + per-device authentication -> OTel Collector ->
+    Prometheus/VictoriaMetrics -> Grafana.
+
+Бизнес-приложение остаётся неизменным. IP устройства не нужен.
+Мониторинг включается выборочно по команде. Специализированная
+разработка сосредоточена в PerformanceAgent.apk и, при необходимости,
+небольшом certificate enrollment/orchestration слое.

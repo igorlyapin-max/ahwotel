@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="help_cpu_meaning" formatted="false">Share of total CPU time spent busy across the device during the interval between two readings.</string>
+    <string name="help_cpu_units" formatted="false">Percent, 0–100. Calculated from changes in /proc/stat counters; idle and I/O wait are excluded from busy time.</string>
+    <string name="help_cpu_impact" formatted="false">Sustained high utilization can leave less execution time for other tasks, increasing response times and heat.</string>
+    <string name="help_cpu_reading" formatted="false">Compare sustained load with CPU wait, probe delay and thermal status. A short peak can be normal. A low device average can hide one saturated core.</string>
+    <string name="help_cpu_example" formatted="false">An 80% reading means 80% of the aggregate counted CPU time was busy in this interval; it is not the agent process share.</string>
+    <string name="help_cpu_limits" formatted="false">Android may deny /proc/stat. Missing readings remain unavailable. CPU wait and probe delay then provide separate clues; they cannot reconstruct this percentage.</string>
+    <string name="help_cpu_state" formatted="false">Feeds CPU pressure. Default thresholds are 80%, 90%, 95%, with time windows before changing the severity. Session settings may differ.</string>
+    <string name="help_cpu_source" formatted="false">Device CPU counters: /proc/stat. Two valid readings are needed after start or reset.</string>
+    <string name="help_cpu_wait_meaning" formatted="false">Time that the dedicated probe thread was ready to execute but waited in the CPU run queue between two probes.</string>
+    <string name="help_cpu_wait_units" formatted="false">Milliseconds accumulated over the measured interval. Difference of the thread scheduler wait counters, converted from nanoseconds.</string>
+    <string name="help_cpu_wait_impact" formatted="false">An increase suggests this thread had difficulty getting CPU time. Similar contention may delay application tasks, but other threads can behave differently.</string>
+    <string name="help_cpu_wait_reading" formatted="false">Compare intervals of similar duration and look for repeated increases together with probe delay. Zero is valid; no universal warning threshold is assigned.</string>
+    <string name="help_cpu_wait_example" formatted="false">20 ms over a 2000 ms probe interval means this thread accumulated 20 ms waiting to run. It does not mean the whole device was 1% overloaded.</string>
+    <string name="help_cpu_wait_limits" formatted="false">Only the agent probe thread is observed. Scheduling policy and other work affect it. A denied or inactive scheduler counter cannot prove absence of contention. Pauses, sleep and resets break the interval.</string>
+    <string name="help_cpu_wait_state" formatted="false">Does not affect CPU pressure or the overall performance state. It remains a separate indirect signal even if system CPU is available.</string>
+    <string name="help_cpu_wait_source" formatted="false">Probe thread: /proc/self/task/&lt;tid&gt;/schedstat, second counter. Availability is tested inside the APK.</string>
+    <string name="help_probe_delay_meaning" formatted="false">How late the probe thread actually starts compared with its scheduled execution time.</string>
+    <string name="help_probe_delay_units" formatted="false">Milliseconds of lateness per probe, measured with monotonic uptime. This is a scheduling delay, not application startup duration.</string>
+    <string name="help_probe_delay_impact" formatted="false">Repeated delays can accompany poor responsiveness when work cannot run on time.</string>
+    <string name="help_probe_delay_reading" formatted="false">Look for repeated peaks and compare them with CPU wait and thermal status. Small delays are expected; the value alone does not identify a bottleneck.</string>
+    <string name="help_probe_delay_example" formatted="false">A probe planned for uptime 5000 ms that begins at 5025 ms has a delay of 25 ms.</string>
+    <string name="help_probe_delay_limits" formatted="false">CPU competition, garbage collection and Android scheduling restrictions can contribute. Deep sleep is excluded by resetting the baseline; unavailable or stale probes are omitted. No universal normal threshold is defined.</string>
+    <string name="help_probe_delay_state" formatted="false">Does not affect CPU pressure or the overall performance state. It can remain available when /proc counters are denied.</string>
+    <string name="help_probe_delay_source" formatted="false">Dedicated probe thread and monotonic uptime timer. Each reading uses the probe timestamp rather than the later database write time.</string>
+    <string name="help_memory_total_meaning" formatted="false">Total RAM available to the operating system on this device.</string>
+    <string name="help_memory_total_units" formatted="false">Bytes; displayed as MiB or GiB. 1 MiB = 1048576 bytes. Read from Android totalMem.</string>
+    <string name="help_memory_total_impact" formatted="false">Provides the capacity against which available memory is assessed; lower capacity leaves less room for simultaneous tasks.</string>
+    <string name="help_memory_total_reading" formatted="false">Usually stable. Interpret available bytes together with this total rather than comparing raw free amounts across different phones.</string>
+    <string name="help_memory_total_example" formatted="false">On a device reporting 1024 MiB total and 128 MiB available, available memory is 12.5%.</string>
+    <string name="help_memory_total_limits" formatted="false">This is system RAM, not app heap size or storage capacity. Hardware reservations can make it smaller than the marketed RAM figure. It does not identify memory consumers.</string>
+    <string name="help_memory_total_state" formatted="false">Used as the denominator of available memory percentage, which feeds memory pressure. Total size alone does not set severity.</string>
+    <string name="help_memory_total_source" formatted="false">Device memory: ActivityManager.getMemoryInfo(), MemoryInfo.totalMem.</string>
+    <string name="help_memory_available_meaning" formatted="false">RAM that Android currently considers available for new work.</string>
+    <string name="help_memory_available_units" formatted="false">Bytes, shown as MiB or GiB; sampled from availMem at each collection.</string>
+    <string name="help_memory_available_impact" formatted="false">A sustained decline can reduce room for new allocations and accompany reclamation, application restarts or delayed work.</string>
+    <string name="help_memory_available_reading" formatted="false">Compare with total RAM, available percentage and the low-memory flag. A decrease after starting apps can be normal; a repeating decline deserves investigation.</string>
+    <string name="help_memory_available_example" formatted="false">128 MiB available on a 1024 MiB device equals 12.5%; the same 128 MiB on a larger device is a smaller fraction.</string>
+    <string name="help_memory_available_limits" formatted="false">This is not simply unused physical memory and not the free heap of one app. Android manages caches; this value alone neither proves a leak nor guarantees an allocation will succeed.</string>
+    <string name="help_memory_available_state" formatted="false">Used to calculate available memory percentage. Memory pressure also considers the Android low-memory flag.</string>
+    <string name="help_memory_available_source" formatted="false">Device memory: ActivityManager.getMemoryInfo(), MemoryInfo.availMem.</string>
+    <string name="help_memory_percent_meaning" formatted="false">Fraction of total RAM currently reported as available by Android.</string>
+    <string name="help_memory_percent_units" formatted="false">Percent, 0–100: available bytes divided by total bytes, multiplied by 100.</string>
+    <string name="help_memory_percent_impact" formatted="false">A low sustained percentage can indicate limited room for concurrent applications and new allocations.</string>
+    <string name="help_memory_percent_reading" formatted="false">Lower values mean less available capacity. Default pressure boundaries are 15%, 10%, 5%; these are app defaults, not universal device limits.</string>
+    <string name="help_memory_percent_example" formatted="false">128 MiB available out of 1024 MiB gives 12.5%, in the default warning band before time-window filtering.</string>
+    <string name="help_memory_percent_limits" formatted="false">Interpret with the low-memory flag and absolute bytes. Cache management and device workload matter. A short dip does not prove a memory leak.</string>
+    <string name="help_memory_percent_state" formatted="false">Feeds memory pressure with descending thresholds. Android low-memory=true requests a critical raw level; the configured time windows still apply.</string>
+    <string name="help_memory_percent_source" formatted="false">Derived from MemoryInfo.availMem / totalMem. Session thresholds can differ from current settings.</string>
+    <string name="help_memory_low_meaning" formatted="false">Android flag indicating that the device is currently in a low-memory condition.</string>
+    <string name="help_memory_low_units" formatted="false">A flag: 0 = no low-memory signal, 1 = low-memory signal. It is not a byte count or percentage.</string>
+    <string name="help_memory_low_impact" formatted="false">A value of 1 is a system warning that memory is constrained and background work may be affected.</string>
+    <string name="help_memory_low_reading" formatted="false">Treat repeated 1 values as a strong signal to inspect available RAM and application behavior. Zero does not guarantee that every app has enough heap space.</string>
+    <string name="help_memory_low_example" formatted="false">With low-memory=1, the raw memory severity is critical even if the configured available-percent thresholds would produce a lower level.</string>
+    <string name="help_memory_low_limits" formatted="false">This follows the Android decision, which can vary by device and software version. It does not identify a leaking or terminated application.</string>
+    <string name="help_memory_low_state" formatted="false">Forces the raw memory pressure candidate to critical; configured escalation and recovery windows still apply, so the displayed level need not change immediately.</string>
+    <string name="help_memory_low_source" formatted="false">Device memory: ActivityManager.getMemoryInfo(), MemoryInfo.lowMemory.</string>
+    <string name="help_memory_threshold_meaning" formatted="false">Memory threshold reported by Android for its low-memory assessment.</string>
+    <string name="help_memory_threshold_units" formatted="false">Bytes, displayed as MiB or GiB. This is the system threshold, not an editable AHWOTel percentage boundary.</string>
+    <string name="help_memory_threshold_impact" formatted="false">Helps explain the low-memory flag and how much absolute memory Android considers a small reserve.</string>
+    <string name="help_memory_threshold_reading" formatted="false">Compare available memory with this threshold and the actual low-memory flag. The threshold provides context rather than a separate diagnosis.</string>
+    <string name="help_memory_threshold_example" formatted="false">Available RAM of 80 MiB against a reported threshold of 100 MiB suggests a small reserve; check the system flag too.</string>
+    <string name="help_memory_threshold_limits" formatted="false">Device policy can differ. Do not assume this threshold equals 5%, 10% or 15% of RAM, or use it to predict the exact next process termination.</string>
+    <string name="help_memory_threshold_state" formatted="false">Shown as diagnostic context only. AHWOTel uses available percentage and the Android low-memory flag for memory pressure, not a direct comparison with this field.</string>
+    <string name="help_memory_threshold_source" formatted="false">Device memory: ActivityManager.getMemoryInfo(), MemoryInfo.threshold.</string>
+    <string name="help_storage_total_meaning" formatted="false">Total size of the filesystem containing the private app data directory.</string>
+    <string name="help_storage_total_units" formatted="false">Bytes, shown as MiB or GiB. Read from StatFs.totalBytes for the app files directory.</string>
+    <string name="help_storage_total_impact" formatted="false">Sets the capacity against which the remaining storage reserve is assessed.</string>
+    <string name="help_storage_total_reading" formatted="false">Usually stable. Compare available bytes and percentage on this same filesystem; a capacity change may reflect a different mount or device setup.</string>
+    <string name="help_storage_total_example" formatted="false">If this filesystem has 16 GiB total and 4 GiB available, its available fraction is 25%.</string>
+    <string name="help_storage_total_limits" formatted="false">This is not the size of AHWOTel data, all device disks combined, or necessarily the marketed storage capacity. Other apps can share this filesystem.</string>
+    <string name="help_storage_total_state" formatted="false">Used as the denominator of storage available percentage. Capacity alone does not set storage pressure.</string>
+    <string name="help_storage_total_source" formatted="false">App data filesystem: StatFs(context.filesDir), totalBytes.</string>
+    <string name="help_storage_available_meaning" formatted="false">Free space that ordinary applications can use on the filesystem containing AHWOTel data.</string>
+    <string name="help_storage_available_units" formatted="false">Bytes, displayed as MiB or GiB; sampled from StatFs.availableBytes.</string>
+    <string name="help_storage_available_impact" formatted="false">A small reserve can prevent writes, downloads or database growth and affect applications sharing the partition.</string>
+    <string name="help_storage_available_reading" formatted="false">Watch sustained decreases and compare with total capacity and available percentage. An increase can follow cleanup by any app.</string>
+    <string name="help_storage_available_example" formatted="false">2 GiB available on a 16 GiB filesystem gives 12.5% remaining capacity.</string>
+    <string name="help_storage_available_limits" formatted="false">Filesystem reserves are excluded. This is not the app history quota and does not guarantee that every write succeeds; app or system limits may apply.</string>
+    <string name="help_storage_available_state" formatted="false">Used to calculate storage available percentage, which feeds storage pressure. AHWOTel history size is reported separately in Diagnostics.</string>
+    <string name="help_storage_available_source" formatted="false">App data filesystem: StatFs(context.filesDir), availableBytes.</string>
+    <string name="help_storage_used_meaning" formatted="false">Filesystem capacity that is not available to ordinary applications, calculated as total minus available bytes.</string>
+    <string name="help_storage_used_units" formatted="false">Bytes, displayed as MiB or GiB. Includes occupied space and capacity reserved from ordinary applications.</string>
+    <string name="help_storage_used_impact" formatted="false">Growth reduces available reserve and can eventually interfere with writes or updates on the shared filesystem.</string>
+    <string name="help_storage_used_reading" formatted="false">Read alongside available percentage. This measurement cannot attribute growth to AHWOTel or any other individual app.</string>
+    <string name="help_storage_used_example" formatted="false">For 16 GiB total and 4 GiB available, this calculated value is 12 GiB.</string>
+    <string name="help_storage_used_limits" formatted="false">It is not a directory size and not exactly the sum of user file sizes because reserved capacity is included. Diagnostics reports AHWOTel storage separately.</string>
+    <string name="help_storage_used_state" formatted="false">No separate threshold is applied to this field. Storage pressure uses available percentage instead.</string>
+    <string name="help_storage_used_source" formatted="false">Derived from StatFs.totalBytes − StatFs.availableBytes on the app data filesystem.</string>
+    <string name="help_storage_percent_meaning" formatted="false">Percentage of the app data filesystem capacity available to ordinary applications.</string>
+    <string name="help_storage_percent_units" formatted="false">Percent, 0–100: available bytes / total bytes × 100.</string>
+    <string name="help_storage_percent_impact" formatted="false">A low reserve can affect writes, updates and applications using the same filesystem.</string>
+    <string name="help_storage_percent_reading" formatted="false">Lower is more constrained. Default pressure thresholds are 15%, 10%, 5%; compare with absolute free bytes and expected data growth.</string>
+    <string name="help_storage_percent_example" formatted="false">2 GiB available out of 16 GiB is 12.5%, in the default warning band before time filtering.</string>
+    <string name="help_storage_percent_limits" formatted="false">These thresholds are configurable application defaults, not universal filesystem failure points. Available capacity does not measure storage speed or I/O latency.</string>
+    <string name="help_storage_percent_state" formatted="false">Feeds storage pressure using descending thresholds and the configured escalation/recovery windows.</string>
+    <string name="help_storage_percent_source" formatted="false">Derived from StatFs.availableBytes and totalBytes for the app data filesystem.</string>
+    <string name="help_thermal_meaning" formatted="false">Android thermal throttling status for the device, rather than a temperature in degrees.</string>
+    <string name="help_thermal_units" formatted="false">Codes: 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown.</string>
+    <string name="help_thermal_impact" formatted="false">Higher levels indicate stronger heat-related restrictions, which can reduce CPU/GPU performance and delay work.</string>
+    <string name="help_thermal_reading" formatted="false">Look for sustained increases and slower task execution at the same time. The numeric gaps are category steps, not equal temperature differences.</string>
+    <string name="help_thermal_example" formatted="false">Status 3 means Android reports severe throttling. It does not mean 3 degrees or 3% load.</string>
+    <string name="help_thermal_limits" formatted="false">Requires Android API 29 and device support. The manufacturer defines sensor and policy behavior; this does not identify one specific hot component. Compare with headroom and battery temperature.</string>
+    <string name="help_thermal_state" formatted="false">Feeds thermal pressure. Default boundaries are statuses 1, 2, 3, followed by the configured time windows; Android thermal codes and app severity codes are different scales.</string>
+    <string name="help_thermal_source" formatted="false">Device thermal policy: PowerManager.currentThermalStatus.</string>
+    <string name="help_headroom_meaning" formatted="false">Android estimate of how much of the thermal envelope is currently in use. Despite the name, a larger value means closer to severe throttling, not more spare capacity.</string>
+    <string name="help_headroom_units" formatted="false">Dimensionless value. 1.0 is the severe-throttling reference; values can exceed 1.0. AHWOTel requests the current estimate, without forecasting.</string>
+    <string name="help_headroom_impact" formatted="false">An upward trend can help explain heat-related performance reduction.</string>
+    <string name="help_headroom_reading" formatted="false">Compare the trend with thermal status. Zero is not a temperature; 0.5 does not promise half the CPU performance remains. Values above 1 have no fixed mapping to higher status codes.</string>
+    <string name="help_headroom_example" formatted="false">A rise from 0.7 to 0.95 moves closer to the 1.0 severe reference; it does not mean that 95% of CPU is busy.</string>
+    <string name="help_headroom_limits" formatted="false">Requires API 30 and device support. Polled no more frequently than once every 10 seconds; the actual frequency depends on the sampling interval. Gaps between readings are expected. Unsupported or non-finite values are unavailable; this is not a direct CPU sensor.</string>
+    <string name="help_headroom_state" formatted="false">Informational only; does not affect thermal pressure or overall state. Those use the thermal status code.</string>
+    <string name="help_headroom_source" formatted="false">Device estimate: PowerManager.getThermalHeadroom(0), sampled no more often than every 10 seconds.</string>
+    <string name="help_battery_meaning" formatted="false">Remaining battery charge reported by Android as a fraction of its reported full-charge scale.</string>
+    <string name="help_battery_units" formatted="false">Percent, 0–100: level / scale × 100, read from the battery broadcast.</string>
+    <string name="help_battery_impact" formatted="false">A decreasing level reflects use of the available charge and helps assess whether a long task can continue on battery.</string>
+    <string name="help_battery_reading" formatted="false">Compare the slope over similar workloads and check charging state. A single reading is not a measurement of power draw or remaining runtime.</string>
+    <string name="help_battery_example" formatted="false">A change from 80% to 75% is a decrease of 5 percentage points; it does not determine watts consumed by the agent.</string>
+    <string name="help_battery_limits" formatted="false">Charge estimates can be coarse and device-dependent. USB power changes the experiment; this metric alone cannot attribute consumption to one app or measure battery health.</string>
+    <string name="help_battery_state" formatted="false">Informational only; does not affect the overall performance state.</string>
+    <string name="help_battery_source" formatted="false">Device battery: ACTION_BATTERY_CHANGED, EXTRA_LEVEL and EXTRA_SCALE.</string>
+    <string name="help_charging_meaning" formatted="false">Whether the Android battery status is charging or full, grouped into one flag by AHWOTel.</string>
+    <string name="help_charging_units" formatted="false">0 = another reported battery status; 1 = charging or full. Missing status produces no value.</string>
+    <string name="help_charging_impact" formatted="false">Provides context for charge level and temperature: external power can change both the battery trend and device heating.</string>
+    <string name="help_charging_reading" formatted="false">Use this flag when comparing sessions on battery and while plugged in. One does not necessarily mean current is flowing into the battery at that instant.</string>
+    <string name="help_charging_example" formatted="false">A full battery produces 1 even when its level stays at 100%.</string>
+    <string name="help_charging_limits" formatted="false">The flag does not report charging current, charger power or cable type. Android unknown/not-charging/discharging statuses map to 0 in this implementation.</string>
+    <string name="help_charging_state" formatted="false">Informational only; does not affect the overall performance state.</string>
+    <string name="help_charging_source" formatted="false">Device battery: ACTION_BATTERY_CHANGED, EXTRA_STATUS; CHARGING and FULL map to 1.</string>
+    <string name="help_temperature_meaning" formatted="false">Battery temperature reported by Android. This is a battery reading, not CPU temperature.</string>
+    <string name="help_temperature_units" formatted="false">Degrees Celsius. The reported integer in tenths of a degree is divided by 10.</string>
+    <string name="help_temperature_impact" formatted="false">Rising battery temperature can accompany charging, workload or a warm environment and help explain thermal behavior.</string>
+    <string name="help_temperature_reading" formatted="false">Compare trends under similar conditions with charging and thermal status. Limits depend on the device; this app assigns no universal battery-temperature alarm threshold.</string>
+    <string name="help_temperature_example" formatted="false">A reported raw value of 350 becomes 35 °C. This example is a conversion, not a recommended operating limit.</string>
+    <string name="help_temperature_limits" formatted="false">Sensor availability and accuracy depend on the device. Battery temperature can differ from CPU and surface temperatures; it does not prove the cause of a thermal restriction.</string>
+    <string name="help_temperature_state" formatted="false">Informational only; does not affect thermal pressure or overall state. Thermal pressure uses the Android thermal status.</string>
+    <string name="help_temperature_source" formatted="false">Device battery: ACTION_BATTERY_CHANGED, EXTRA_TEMPERATURE / 10.</string>
+    <string name="help_cpu_pressure_meaning" formatted="false">Filtered assessment of CPU constraints derived from CPU utilization.</string>
+    <string name="help_cpu_pressure_units" formatted="false">Ordinal code: 0 normal, 1 warning, 2 degraded, 3 critical. These codes are not percentages or physical measurements.</string>
+    <string name="help_cpu_pressure_impact" formatted="false">A sustained higher level highlights CPU conditions that may interfere with responsive or reliable task execution.</string>
+    <string name="help_cpu_pressure_reading" formatted="false">Default boundaries: 80%, 90%, 95%. A higher candidate must persist for 30 seconds and recovery for 60 seconds by default. A changing candidate restarts its window.</string>
+    <string name="help_cpu_pressure_example" formatted="false">With default settings, 92% gives a raw degraded candidate. From normal, a steady candidate for at least 30 seconds is needed before displaying level 2.</string>
+    <string name="help_cpu_pressure_limits" formatted="false">Thresholds and windows are session settings. Gaps reset the filter; unavailable inputs yield no assessment. Initial normal can reflect a pending window. Historical sessions may use different settings.</string>
+    <string name="help_cpu_pressure_state" formatted="false">Contributes to overall performance state as one of the available resource assessments. The overall value is their maximum.</string>
+    <string name="help_cpu_pressure_source" formatted="false">Derived by AHWOTel PressureWindow from CPU utilization; not an Android severity code.</string>
+    <string name="help_memory_pressure_meaning" formatted="false">Filtered assessment of memory constraints derived from available RAM percentage and the low-memory flag.</string>
+    <string name="help_memory_pressure_units" formatted="false">Ordinal code: 0 normal, 1 warning, 2 degraded, 3 critical. These codes are not percentages or physical measurements.</string>
+    <string name="help_memory_pressure_impact" formatted="false">A sustained higher level highlights memory conditions that may interfere with responsive or reliable task execution.</string>
+    <string name="help_memory_pressure_reading" formatted="false">Default boundaries: 15%, 10%, 5% (descending). A higher candidate must persist for 30 seconds and recovery for 60 seconds by default. A changing candidate restarts its window. The Android low-memory flag requests a critical raw level, still subject to the time window.</string>
+    <string name="help_memory_pressure_example" formatted="false">With default settings, 8% available gives a raw degraded candidate. From normal, a steady candidate for at least 30 seconds is needed before displaying level 2.</string>
+    <string name="help_memory_pressure_limits" formatted="false">Thresholds and windows are session settings. Gaps reset the filter; unavailable inputs yield no assessment. Initial normal can reflect a pending window. Historical sessions may use different settings.</string>
+    <string name="help_memory_pressure_state" formatted="false">Contributes to overall performance state as one of the available resource assessments. The overall value is their maximum.</string>
+    <string name="help_memory_pressure_source" formatted="false">Derived by AHWOTel PressureWindow from available RAM percentage and the low-memory flag; not an Android severity code.</string>
+    <string name="help_storage_pressure_meaning" formatted="false">Filtered assessment of storage constraints derived from available filesystem percentage.</string>
+    <string name="help_storage_pressure_units" formatted="false">Ordinal code: 0 normal, 1 warning, 2 degraded, 3 critical. These codes are not percentages or physical measurements.</string>
+    <string name="help_storage_pressure_impact" formatted="false">A sustained higher level highlights storage conditions that may interfere with responsive or reliable task execution.</string>
+    <string name="help_storage_pressure_reading" formatted="false">Default boundaries: 15%, 10%, 5% (descending). A higher candidate must persist for 30 seconds and recovery for 60 seconds by default. A changing candidate restarts its window.</string>
+    <string name="help_storage_pressure_example" formatted="false">With default settings, 8% available gives a raw degraded candidate. From normal, a steady candidate for at least 30 seconds is needed before displaying level 2.</string>
+    <string name="help_storage_pressure_limits" formatted="false">Thresholds and windows are session settings. Gaps reset the filter; unavailable inputs yield no assessment. Initial normal can reflect a pending window. Historical sessions may use different settings.</string>
+    <string name="help_storage_pressure_state" formatted="false">Contributes to overall performance state as one of the available resource assessments. The overall value is their maximum.</string>
+    <string name="help_storage_pressure_source" formatted="false">Derived by AHWOTel PressureWindow from available filesystem percentage; not an Android severity code.</string>
+    <string name="help_thermal_pressure_meaning" formatted="false">Filtered assessment of thermal constraints derived from Android thermal status.</string>
+    <string name="help_thermal_pressure_units" formatted="false">Ordinal code: 0 normal, 1 warning, 2 degraded, 3 critical. These codes are not percentages or physical measurements.</string>
+    <string name="help_thermal_pressure_impact" formatted="false">A sustained higher level highlights thermal conditions that may interfere with responsive or reliable task execution.</string>
+    <string name="help_thermal_pressure_reading" formatted="false">Default boundaries: 1, 2, 3. A higher candidate must persist for 30 seconds and recovery for 60 seconds by default. A changing candidate restarts its window.</string>
+    <string name="help_thermal_pressure_example" formatted="false">With default settings, status 2 gives a raw degraded candidate. From normal, a steady candidate for at least 30 seconds is needed before displaying level 2.</string>
+    <string name="help_thermal_pressure_limits" formatted="false">Thresholds and windows are session settings. Gaps reset the filter; unavailable inputs yield no assessment. Initial normal can reflect a pending window. Historical sessions may use different settings.</string>
+    <string name="help_thermal_pressure_state" formatted="false">Contributes to overall performance state as one of the available resource assessments. The overall value is their maximum.</string>
+    <string name="help_thermal_pressure_source" formatted="false">Derived by AHWOTel PressureWindow from Android thermal status; not an Android severity code.</string>
+    <string name="help_state_meaning" formatted="false">Overall assessment formed from the worst available CPU, memory, storage and thermal pressure levels.</string>
+    <string name="help_state_units" formatted="false">Ordinal code: 0 normal, 1 warning, 2 degraded, 3 critical. Maximum of available filtered resource levels; no value if none is available.</string>
+    <string name="help_state_impact" formatted="false">Helps locate periods when at least one monitored resource may constrain work, then directs investigation to that resource.</string>
+    <string name="help_state_reading" formatted="false">Open individual pressure charts to see what raised the state. Normal means no available assessment is currently elevated; it is not a guarantee that the device or an app is healthy.</string>
+    <string name="help_state_example" formatted="false">If memory pressure is 2, storage is 0 and CPU/thermal are unavailable, overall state is 2 from a partial assessment.</string>
+    <string name="help_state_limits" formatted="false">Missing resources are excluded, not treated as proven normal. Indirect CPU signals, battery and headroom are excluded. Resource windows delay changes; the result is not a causal diagnosis or an app response-time measurement.</string>
+    <string name="help_state_state" formatted="false">This is the final state. It takes the maximum after each resource has applied its own escalation/recovery window; no second global time window is added.</string>
+    <string name="help_state_source" formatted="false">Derived by AHWOTel from CPU_PRESSURE, MEMORY_PRESSURE, STORAGE_PRESSURE and THERMAL_PRESSURE.</string>
+</resources>

@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -103,6 +104,9 @@ class MainActivity : AppCompatActivity() {
 }
 
 @Composable fun MonitorScreen(app: MonitorApp) {
+    var extraPage by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    if (extraPage != null) { AgentTelemetryScreen(app, extraPage == "battery") { extraPage = null }; return }
+
     val settings by app.settings.collectAsStateWithLifecycle()
     val state by app.state.collectAsStateWithLifecycle()
     val latestFlow = remember { app.db.dao().latest() }
@@ -114,12 +118,20 @@ class MainActivity : AppCompatActivity() {
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle("AHWOTel", stringResource(R.string.local_first)) }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({ extraPage = "battery" }) { Text(stringResource(R.string.at_battery_title)) }
+            OutlinedButton({ extraPage = "self" }) { Text(stringResource(R.string.at_self_title)) }
+        } }
         item {
             Panel(stringResource(if (state.paused) R.string.paused else if (state.sessionId != null) R.string.running else R.string.idle)) {
                 Text(stringResource(if (settings.otlpEnabled) R.string.export_enabled else R.string.local_mode), color = Accent)
                 if (state.sessionId != null) {
                     Text(state.sessionId!!, style = MaterialTheme.typography.bodySmall)
-                    Text(state.remainingSeconds?.let { stringResource(R.string.remaining, it) } ?: stringResource(R.string.continuous))
+                    Text(when (state.mode) {
+                        SessionMode.CONTINUOUS -> stringResource(R.string.continuous)
+                        SessionMode.TIMED -> stringResource(R.string.remaining, state.remainingSeconds ?: 0L)
+                        null -> stringResource(R.string.session_starting)
+                    }, Modifier.testTag("session_timing"))
                     Button(onClick = { MonitoringService.stop(context, state.sessionId!!) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.stop)) }
                 } else {
                     OutlinedTextField(reason, { if (it.length <= 256) reason = it }, label = { Text(stringResource(R.string.reason)) }, modifier = Modifier.fillMaxWidth())
@@ -128,12 +140,14 @@ class MainActivity : AppCompatActivity() {
                         try { MonitoringService.start(context, StartRequest(UUID.randomUUID().toString(), settings.continuous,
                             settings.durationSeconds, settings.intervalMs, settings.enabled, reason)); message = null }
                         catch (_: Exception) { message = "command_rejected" }
-                    }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.start)) }
+                    }, enabled = settings.monitoringEnabled, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.start)) }
+                    if (!settings.monitoringEnabled) Text(stringResource(R.string.oem_monitoring_disabled))
                 }
                 Toggle(stringResource(R.string.screen_off), settings.collectScreenOff) { checked ->
                     scope.launch { try { app.saveSettings(settings.copy(collectScreenOff = checked)) } catch (_: Exception) { message = "invalid_configuration" } }
                 }
                 Text(stringResource(R.string.screen_off_hint), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.background_collection_hint), style = MaterialTheme.typography.bodySmall)
                 (message ?: state.error)?.let { Text(errorText(it), color = MaterialTheme.colorScheme.error) }
             }
         }
@@ -145,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                 sample?.let { Text(formatTime(it.time), color = Color(0xFF91A5B5)) }
             }
         }
-        items(listOf(Metric.CPU, Metric.CPU_WAIT, Metric.PROBE_DELAY, Metric.MEMORY_AVAILABLE, Metric.MEMORY_PERCENT, Metric.STORAGE_PERCENT, Metric.THERMAL, Metric.HEADROOM, Metric.BATTERY, Metric.TEMPERATURE)) { metric ->
+        items(listOf(Metric.CPU, Metric.CPU_WAIT, Metric.PROBE_DELAY, Metric.MEMORY_AVAILABLE, Metric.MEMORY_PERCENT, Metric.STORAGE_PERCENT, Metric.THERMAL, Metric.HEADROOM)) { metric ->
             Panel(metricTitle(metric), help = metric) {
                 val value = latest?.let { metric.value(it) }
                 Text(formatValue(value, metric), style = MaterialTheme.typography.headlineMedium)
@@ -159,11 +173,11 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-@Composable fun Toggle(title: String, checked: Boolean, helpGroup: HelpGroup? = null, onChange: (Boolean) -> Unit) {
+@Composable fun Toggle(title: String, checked: Boolean, helpGroup: HelpGroup? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f).padding(end = 8.dp))
         helpGroup?.let { HelpGroupButton(it) }
-        Switch(checked, onChange)
+        Switch(checked, onChange, enabled = enabled, modifier = Modifier.testTag("toggle:$title"))
     }
 }
 
@@ -212,6 +226,8 @@ fun formatValue(value: Double?, metric: Metric): String = if (value == null) "â€
 }
 @Composable fun errorText(code: String): String = stringResource(when(code) {
     "identity_busy" -> R.string.identity_busy; "invalid_configuration" -> R.string.invalid_configuration
+    "session_timing_apply_failed" -> R.string.session_timing_apply_failed
     "initialization_failed" -> R.string.initialization_failed; "storage_or_collection_failed" -> R.string.storage_or_collection_failed
+    "no_collectors" -> R.string.no_collectors
     "soti_start_rejected" -> R.string.start_rejected; else -> R.string.command_rejected
 })

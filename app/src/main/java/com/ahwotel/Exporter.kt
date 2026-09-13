@@ -13,7 +13,9 @@ object Exporter {
             var first = true
             var lastSession: SessionRow? = null
             while (true) {
+                val began = android.os.SystemClock.elapsedRealtime()
                 val page = app.db.dao().page(after, spec.session, spec.from, spec.to)
+                app.costs.operation("database_read", began, true, samples = page.size.toLong())
                 if (page.isEmpty()) break
                 for (row in page) {
                     if (lastSession?.id != row.sessionId) lastSession = app.db.dao().session(row.sessionId)

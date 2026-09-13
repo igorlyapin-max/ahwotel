@@ -1,0 +1,28 @@
+<resources>
+<string name="chart_mixed">Несколько наблюдаемых состояний</string>
+<string name="chart_gap">Разрыв данных или граница сессий</string>
+<string name="chart_unknown_state">Неизвестное состояние</string>
+<string name="chart_nominal_legend">Ступени: наблюдаемые состояния, не тяжесть. Нажмите точку для просмотра.</string>
+<string name="chart_sum_legend">Линия: сумма за каждый отображаемый интервал. Нажмите точку для просмотра суммы.</string>
+<string name="chart_max_legend">Линия: максимум за каждый отображаемый интервал. Нажмите точку для просмотра максимума.</string>
+<string name="chart_break_legend">Крестик: разрыв, граница сессий или несколько состояний за интервал. Непрерывность не предполагается.</string>
+<string name="chart_selected_sum">Сумма за интервал: %1$s %2$s</string>
+<string name="chart_selected_max">Максимум за интервал: %1$s %2$s</string>
+<string name="at_health_good">Исправна</string>
+<string name="at_health_hot">Перегрев</string>
+<string name="at_health_dead">Неисправна</string>
+<string name="at_health_voltage">Перенапряжение</string>
+<string name="at_health_failure">Неуточнённый сбой</string>
+<string name="at_health_cold">Переохлаждение</string>
+<string name="at_status_charging">Заряжается</string>
+<string name="at_status_discharging">Разряжается</string>
+<string name="at_status_idle">Не заряжается</string>
+<string name="at_status_full">Полный заряд</string>
+<string name="at_plug_none">Питание отключено</string>
+<string name="at_plug_ac">Сеть</string>
+<string name="at_plug_usb">USB</string>
+<string name="at_plug_wireless">Беспроводное питание</string>
+<string name="at_state_no">Нет</string>
+<string name="at_state_yes">Да</string>
+<string name="at_state_unknown">Неизвестно (%1$d)</string>
+</resources>

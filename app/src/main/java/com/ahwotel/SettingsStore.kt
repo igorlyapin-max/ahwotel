@@ -22,6 +22,13 @@ class SettingsStore(private val context: Context) {
 
 object SettingsCodec {
     fun encode(s: Settings): String = JSONObject().apply {
+        put("batterySettings", ExtraSettingsCodec.battery(s.batterySettings)); put("selfTelemetry", ExtraSettingsCodec.self(s.selfTelemetry))
+        put("monitoringEnabled", s.monitoringEnabled); put("uploadIntervalSeconds", s.uploadIntervalSeconds); put("backendEnvironment", s.backendEnvironment)
+        put("oem", JSONObject().apply {
+            put("enabled", s.oem.enabled); put("knox", s.oem.knox); put("profile", s.oem.profile)
+            put("categories", JSONArray(s.oem.categories.map { it.name }))
+            put("intervals", JSONObject().apply { s.oem.intervals.forEach { (c, seconds) -> put(c.name, seconds) } })
+        })
         put("language", s.language); put("intervalMs", s.intervalMs)
         put("durationSeconds", s.durationSeconds); put("maxDurationSeconds", s.maxDurationSeconds)
         put("continuous", s.continuous); put("collectScreenOff", s.collectScreenOff)
@@ -46,6 +53,14 @@ object SettingsCodec {
         val t = o.getJSONObject("thresholds")
         fun list(name: String) = t.getJSONArray(name).let { a -> (0 until a.length()).map { a.getDouble(it) } }
         return Settings(
+            batterySettings = o.optJSONObject("batterySettings")?.let(ExtraSettingsCodec::battery) ?: BatterySettings(enabled = o.getJSONArray("enabled").let { a -> (0 until a.length()).any { a.getString(it) == "BATTERY" } }),
+            selfTelemetry = o.optJSONObject("selfTelemetry")?.let(ExtraSettingsCodec::self) ?: SelfTelemetrySettings(),
+            monitoringEnabled = o.optBoolean("monitoringEnabled", true), uploadIntervalSeconds = o.optInt("uploadIntervalSeconds", 0),
+            backendEnvironment = o.optString("backendEnvironment", "local"),
+            oem = o.optJSONObject("oem")?.let { e -> com.ahwotel.oem.OemSettings(e.getBoolean("enabled"), e.getBoolean("knox"),
+                e.getJSONArray("categories").let { a -> (0 until a.length()).map { com.ahwotel.oem.OemCategory.valueOf(a.getString(it)) }.toSet() },
+                e.getString("profile"), com.ahwotel.oem.OemCategory.entries.associateWith { e.getJSONObject("intervals").getInt(it.name) })
+            } ?: com.ahwotel.oem.OemSettings(),
             language = o.getString("language"), intervalMs = o.getLong("intervalMs"),
             durationSeconds = o.getLong("durationSeconds"), maxDurationSeconds = o.getLong("maxDurationSeconds"),
             continuous = o.getBoolean("continuous"), collectScreenOff = o.getBoolean("collectScreenOff"),

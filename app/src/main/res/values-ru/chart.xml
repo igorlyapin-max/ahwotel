@@ -1,0 +1,10 @@
+<resources>
+    <string name="chart_next_point">Следующий замер</string>
+    <string name="chart_previous_point">Предыдущий замер</string>
+    <string name="chart_thermal_states">Нет|Лёгкий|Умеренный|Сильный|Критический|Аварийный|Отключение</string>
+    <string name="chart_axis_value">Значение · %1$s</string>
+    <string name="chart_axis_time">Время · %1$s</string>
+    <string name="chart_numeric_legend">Линия: среднее · выделенный диапазон: минимум–максимум. Нажмите точку для просмотра значений.</string>
+    <string name="chart_state_legend">Ступени: максимальная тяжесть за интервал. Нажмите точку для просмотра состояния.</string>
+    <string name="chart_selected_values">Минимум: %1$s\nСреднее: %2$s\nМаксимум: %3$s %4$s</string>
+</resources>

@@ -1,0 +1,618 @@
+ТЕХНИЧЕСКОЕ ЗАДАНИЕ OEM EXTENDED TELEMETRY ДЛЯ ANDROID MONITORING AGENT
+MVP: SAMSUNG KNOX + SOTI MOBICONTROL
+
+Версия: 0.1 MVP
+
+1.  НАЗНАЧЕНИЕ
+
+Расширить Android Monitoring Agent механизмом OEM Extended Telemetry,
+использующим дополнительные возможности корпоративно-управляемых
+Android-устройств.
+
+Первая MVP-реализация: - Samsung Knox Platform for Enterprise / Knox
+SDK; - Samsung Knox Service Plugin (KSP), где применимо; - Android
+Enterprise Fully Managed / Device Owner; - SOTI MobiControl для
+enrollment, конфигурации, распространения приложения и OEM-политик.
+
+Архитектура должна быть vendor-neutral: Samsung Knox является первой
+реализацией OEM Adapter, но основной telemetry pipeline не должен
+зависеть от Samsung-specific API.
+
+OEM Extension не считается root-доступом. Приложение не должно
+предполагать наличие UID 0, su, произвольного доступа к /proc, /sys,
+dumpsys или signature/privileged permissions.
+
+Доступность каждой OEM-метрики определяется runtime capability detection
+и поддерживаемой версией OEM/Knox API.
+
+2.  ЦЕЛИ
+
+3.  Получать больше системных метрик, чем доступно обычному
+    Android-приложению.
+
+4.  Использовать официальные enterprise/OEM API вместо root.
+
+5.  Централизованно разворачиваться через SOTI.
+
+6.  Автоматически определять доступность OEM-функций.
+
+7.  Не ломать основной monitoring pipeline при отсутствии Knox.
+
+8.  Позволять добавлять других OEM в будущем.
+
+9.  Передавать backend информацию об источнике и качестве метрик.
+
+10. Сравнивать standard Android telemetry и OEM telemetry.
+
+11. Не использовать undocumented/private API как обязательную часть MVP.
+
+12. ОБЛАСТЬ MVP
+
+MVP ориентирован на корпоративные Samsung-устройства, управляемые через
+SOTI MobiControl.
+
+Samsung Device -> Android Enterprise Fully Managed -> SOTI MobiControl
+-> Knox / Knox Service Plugin -> Monitoring Agent -> OEM Adapter:
+Samsung Knox -> Telemetry Core -> Local Aggregation -> Backend
+
+4.  АРХИТЕКТУРА
+
+Monitoring Agent не должен обращаться к Knox API напрямую из
+бизнес-логики collectors.
+
+Необходимо реализовать abstraction layer:
+
+OemTelemetryProvider
+
+Структура:
+
+Telemetry Core - AndroidStandardProvider - OemTelemetryProvider -
+SamsungKnoxProvider - ZebraProvider [future] - HoneywellProvider
+[future]
+
+Samsung-specific код должен находиться в отдельном module/package.
+
+5.  CAPABILITY DETECTION
+
+При запуске определять:
+
+oem_manufacturer oem_model android_version android_sdk
+enterprise_managed device_owner_available knox_available knox_version
+knox_api_level ksp_policy_available oem_extension_available
+
+Дополнительно формировать список capabilities, например:
+
+provider = samsung_knox available = true capabilities =
+device_info_extended security_state network_extended
+application_inventory restriction_state
+
+Запрещено определять поддержку функции только по manufacturer ==
+Samsung. Каждая capability проверяется отдельно.
+
+6.  СОСТОЯНИЯ OEM PROVIDER
+
+UNAVAILABLE AVAILABLE NOT_CONFIGURED PERMISSION_DENIED LICENSE_REQUIRED
+LICENSE_ERROR API_NOT_SUPPORTED POLICY_RESTRICTED READY DEGRADED ERROR
+
+Состояние отправляется на backend.
+
+7.  METRIC SOURCE
+
+Каждая расширенная метрика должна содержать:
+
+metric_name metric_value timestamp source provider capability quality
+error
+
+Допустимые source:
+
+ANDROID_STANDARD ANDROID_ENTERPRISE OEM DERIVED
+
+Пример:
+
+metric_name = device.security.usb_debugging source = OEM provider =
+samsung_knox quality = authoritative
+
+8.  DEVICE INFORMATION
+
+Целевые метрики:
+
+device.manufacturer device.model device.product device.serial_available
+device.hardware device.firmware device.build device.security_patch
+device.android_version device.android_sdk
+
+OEM-specific:
+
+device.oem.name device.oem.platform_version device.oem.api_level
+device.oem.enterprise_state
+
+При отсутствии разрешения значение не подменяется фиктивными данными.
+
+9.  SECURITY TELEMETRY
+
+Целевые категории:
+
+device.security.developer_mode device.security.usb_debugging
+device.security.screen_lock device.security.encryption_state
+device.security.security_patch device.security.enterprise_management
+device.security.policy_compliance
+
+При поддержке OEM API:
+
+device.security.knox_state device.security.integrity_state
+device.security.enterprise_policy_state
+
+Backend compliance state:
+
+COMPLIANT WARNING NON_COMPLIANT UNKNOWN
+
+10. APPLICATION TELEMETRY
+
+При наличии разрешённых enterprise/OEM API собирать:
+
+package_name version_name version_code install_state enabled system_app
+managed_app
+
+При поддержке OEM:
+
+application.restriction_state application.enterprise_state
+
+Не собирать пользовательский контент приложений.
+
+11. APPLICATION INVENTORY
+
+Формировать:
+
+inventory_timestamp package_count managed_package_count
+system_package_count
+
+Для каждого package:
+
+package_name version state source
+
+Рекомендуемый режим: - полный snapshot при enrollment; - полный snapshot
+после существенного изменения; - периодический snapshot; - между
+snapshot отправлять delta.
+
+12. NETWORK TELEMETRY
+
+Standard provider:
+
+network_type wifi/cellular state agent_tx_bytes agent_rx_bytes
+
+OEM provider по возможности:
+
+network.interface_state network.enterprise_policy_state
+network.vpn_state network.proxy_state network.restriction_state
+
+При наличии соответствующих OEM API допускается расширение
+Wi-Fi/cellular metadata.
+
+Чувствительные идентификаторы собираются только при явной необходимости
+продукта.
+
+13. CONNECTIVITY STATE
+
+Собирать:
+
+wifi_enabled cellular_available ethernet_available vpn_active
+airplane_mode
+
+При поддержке OEM:
+
+wifi_policy_state vpn_policy_state network_restrictions
+
+14. BATTERY TELEMETRY
+
+Основные показатели:
+
+battery.level battery.status battery.health battery.temperature
+battery.voltage battery.current battery.charge_counter battery.charging
+battery.power_save_mode
+
+OEM-specific дополнительные показатели публиковать как:
+
+battery.oem.*
+
+Запрещено выдавать device-wide battery current за расход Monitoring
+Agent.
+
+15. CPU TELEMETRY
+
+Standard provider:
+
+agent.cpu.time agent.cpu.delta agent.cpu.percent_estimate
+
+OEM provider при наличии официального API:
+
+system.cpu.utilization system.cpu.load system.cpu.state
+
+Конкретная Samsung Knox MVP-метрика включается только после
+подтверждения наличия официального API на целевой версии Knox/API.
+
+Если API отсутствует:
+
+capability = UNSUPPORTED
+
+Undocumented /proc access не используется как обязательный fallback.
+
+16. MEMORY TELEMETRY
+
+Standard provider:
+
+agent.memory.pss agent.memory.rss agent.memory.java_heap
+agent.memory.native_heap
+
+System/OEM при доступности:
+
+system.memory.total system.memory.available system.memory.pressure
+
+Необходимо различать agent memory и system memory.
+
+17. STORAGE TELEMETRY
+
+Собирать:
+
+storage.total storage.available storage.used
+
+При поддержке OEM:
+
+storage.policy_state storage.external_storage_state
+storage.usb_storage_state
+
+18. THERMAL TELEMETRY
+
+Использовать стандартные Android thermal API там, где они доступны:
+
+thermal.status thermal.throttling_state
+
+OEM-specific sensors добавлять только при наличии документированного OEM
+API:
+
+thermal.sensor. thermal.oem.
+
+Нельзя предполагать доступность CPU temperature через Knox.
+
+19. DEVICE POLICY TELEMETRY
+
+Целевые показатели:
+
+policy.device_managed policy.owner_state policy.password_policy
+policy.screen_lock_policy policy.usb_policy policy.camera_policy
+policy.bluetooth_policy policy.wifi_policy policy.installation_policy
+
+Показатель включается только при наличии API и разрешения на чтение
+соответствующей политики.
+
+20. RESTRICTION TELEMETRY
+
+Пример:
+
+restriction.camera restriction.usb restriction.bluetooth
+restriction.wifi restriction.factory_reset restriction.app_installation
+restriction.debugging
+
+Значения:
+
+ALLOWED RESTRICTED UNKNOWN
+
+21. KNOX PROVIDER
+
+Реализовать SamsungKnoxTelemetryProvider.
+
+Ответственность:
+
+-   определение Knox availability;
+-   определение Knox API/platform version;
+-   проверка permissions/policies;
+-   взаимодействие с поддерживаемыми Knox API;
+-   нормализация Samsung-specific данных;
+-   преобразование в vendor-neutral telemetry schema;
+-   обработка ошибок;
+-   capability reporting.
+
+22. KNOX CAPABILITIES REGISTRY
+
+Создать KnoxCapabilityRegistry.
+
+Каждая capability:
+
+id minimum_android_sdk minimum_knox_version required_permission
+required_policy license_requirement availability reason
+
+23. KNOX LICENSE / AUTHORIZATION
+
+Если выбранные Knox API требуют лицензии или дополнительной активации:
+
+-   определять состояние лицензии;
+-   не падать при отсутствии лицензии;
+-   сообщать состояние backend;
+-   отключать только зависимые capabilities.
+
+Telemetry:
+
+knox.license.state knox.license.last_error knox.provider.state
+
+License keys в telemetry не передавать.
+
+24. SOTI INTEGRATION
+
+SOTI MobiControl используется для:
+
+-   enrollment устройства;
+-   Android Enterprise Fully Managed provisioning;
+-   установки Monitoring Agent;
+-   обновления Monitoring Agent;
+-   установки/конфигурации Knox Service Plugin;
+-   применения OEMConfig;
+-   распространения managed configuration;
+-   выдачи поддерживаемых разрешений;
+-   применения enterprise policies.
+
+25. MANAGED CONFIGURATION
+
+Поддержать:
+
+monitoring_enabled oem_telemetry_enabled knox_telemetry_enabled
+sampling_profile upload_interval application_inventory_enabled
+security_telemetry_enabled network_telemetry_enabled debug_mode
+backend_environment config_version
+
+26. SAMPLING
+
+Рекомендуемые MVP интервалы:
+
+Battery: 60 sec Agent CPU: 60 sec Agent memory: 60 sec System memory: 5
+min Security state: 15 min Network state: 5 min Policy state: 15 min
+Application inventory: 6-24 hours + event/delta Device information:
+startup + 24 hours Knox capability state: startup + config change
+
+27. EVENT-DRIVEN COLLECTION
+
+Где возможно, вместо polling использовать события:
+
+network changed power connected power disconnected package installed
+package removed managed configuration changed
+
+После события отправлять delta, а не полный snapshot.
+
+28. LOCAL AGGREGATION
+
+High-frequency metrics агрегировать локально:
+
+min max avg sum count p50 p95
+
+Основное окно: 5 minutes.
+
+State/security changes не агрегировать так, чтобы терялись значимые
+события.
+
+29. TELEMETRY SCHEMA
+
+Пример:
+
+{ “timestamp”: 1789305600000, “device_id”: “…”, “agent_version”:
+“3.0.0”, “provider”: { “standard”: true, “oem”: “samsung_knox”,
+“oem_state”: “READY” }, “device”: { “manufacturer”: “Samsung”, “model”:
+“…” }, “battery”: { “level”: 74, “charging”: false }, “security”: {
+“compliance”: “COMPLIANT” }, “oem”: { “provider”: “samsung_knox”,
+“capabilities”: [ “security_state”, “application_inventory” ] } }
+
+30. BACKEND DEVICE CAPABILITIES
+
+Backend должен хранить capability profile:
+
+Android Standard Device Owner Samsung Knox Security Extended App
+Inventory System CPU Thermal Extended
+
+Это необходимо для корректной интерпретации отсутствующих метрик.
+
+31. UNSUPPORTED METRICS
+
+Отсутствие метрики не означает 0.
+
+Использовать:
+
+AVAILABLE UNAVAILABLE UNSUPPORTED PERMISSION_DENIED NOT_CONFIGURED ERROR
+
+32. BACKEND DASHBOARD
+
+OEM Telemetry dashboard.
+
+Device:
+
+Manufacturer Model Android Security Patch Management State OEM Provider
+OEM Provider State
+
+Security:
+
+Compliance Developer Mode USB Debugging Encryption Security Patch Knox
+State
+
+Resources:
+
+Battery Agent CPU Agent Memory System Memory Storage Thermal Status
+
+Applications:
+
+Installed Apps Managed Apps Changed Apps
+
+Policies:
+
+USB Camera Bluetooth Wi-Fi Installation restrictions
+
+33. FLEET DASHBOARD
+
+Показывать:
+
+devices_total devices_oem_enabled devices_knox_enabled
+devices_knox_ready devices_knox_error
+
+Разрезы:
+
+manufacturer model Android version Knox version agent version
+
+34. ALERTS
+
+MVP alerts:
+
+OEM_PROVIDER_ERROR KNOX_NOT_AVAILABLE KNOX_PERMISSION_DENIED
+KNOX_LICENSE_ERROR DEVICE_NON_COMPLIANT USB_DEBUGGING_ENABLED
+DEVELOPER_MODE_ENABLED SECURITY_PATCH_OUTDATED BATTERY_OVERHEATING
+LOW_STORAGE MONITORING_AGENT_HIGH_CPU MONITORING_AGENT_HIGH_MEMORY
+
+35. PRIVACY
+
+Не использовать расширенные enterprise-права для сбора пользовательского
+контента.
+
+Запрещено собирать:
+
+messages email content browser history file contents passwords tokens
+application private data
+
+если это отдельно не предусмотрено другим утверждённым продуктовым
+требованием.
+
+36. SECURITY
+
+Monitoring Agent должен:
+
+-   использовать защищённое TLS-соединение с backend;
+-   защищать локальный telemetry buffer;
+-   не логировать secrets;
+-   не отправлять Knox license keys;
+-   валидировать managed configuration;
+-   валидировать server configuration;
+-   ограничивать debug telemetry по времени.
+
+37. FALLBACK
+
+При отсутствии Knox:
+
+SamsungKnoxProvider = UNAVAILABLE
+
+Monitoring Agent продолжает работу через AndroidStandardProvider.
+
+Ошибка одной OEM capability не должна останавливать остальные
+capabilities.
+
+38. OEM ABSTRACTION
+
+Vendor-neutral schema обязательна.
+
+Не рекомендуется:
+
+samsung_knox_battery samsung_knox_network samsung_knox_security
+
+Предпочтительно:
+
+battery. network. security.*
+
+с metadata:
+
+source = OEM provider = samsung_knox
+
+39. FUTURE OEM SUPPORT
+
+Архитектура должна позволять добавить:
+
+Zebra Honeywell другие Android Enterprise OEM
+
+без изменения основного telemetry protocol.
+
+Для каждого OEM:
+
+OemTelemetryProvider CapabilityRegistry OEM-specific adapter
+
+40. MVP P0
+
+Обязательно:
+
+Samsung detection Knox availability detection Knox version detection
+Capability registry Provider state SOTI deployment Managed configuration
+Extended device information Security telemetry Application inventory
+Network state Battery context Storage Policy/restriction state Backend
+capability profile OEM dashboard Fallback на standard Android telemetry
+
+41. MVP P1
+
+Следующая итерация:
+
+расширенная network telemetry расширенная application telemetry device
+compliance score policy change events automatic anomaly detection
+Knox-specific alerts расширенная thermal telemetry при наличии API
+
+42. НЕ ВХОДИТ В MVP
+
+Root su UID 0 custom firmware system APK installation priv-app SELinux
+modification undocumented Android API обход Android sandbox обход OEM
+security произвольное чтение /proc других процессов произвольное чтение
+/sys shell dumpsys от имени приложения
+
+Эти возможности рассматриваются отдельно только при наличии OEM/system
+integration.
+
+43. ACCEPTANCE CRITERIA
+
+MVP считается реализованным, если:
+
+1.  Приложение разворачивается через SOTI на Samsung Fully Managed
+    device.
+
+2.  Определяется наличие Samsung Knox.
+
+3.  Определяется состояние OEM provider.
+
+4.  Backend получает список capabilities.
+
+5.  Standard telemetry продолжает работать без Knox.
+
+6.  Extended security telemetry поступает при наличии capability.
+
+7.  Application inventory работает в рамках доступных enterprise
+    permissions.
+
+8.  Battery telemetry корректно маркируется как device-level.
+
+9.  OEM metrics содержат source/provider metadata.
+
+10. Unsupported metric не интерпретируется как 0.
+
+11. Ошибка одной Knox capability не останавливает monitoring agent.
+
+12. Sampling управляется конфигурацией.
+
+13. Backend показывает OEM capability profile устройства.
+
+14. Backend позволяет фильтровать устройства по Knox/provider state.
+
+15. Реализация не требует root.
+
+16. КЛЮЧЕВОЙ РЕЗУЛЬТАТ
+
+После MVP система должна отвечать:
+
+-   Какие устройства имеют OEM Extended Telemetry?
+-   Какие Knox capabilities доступны на конкретном устройстве?
+-   В каком состоянии находится enterprise/security configuration?
+-   Какие расширенные метрики доступны сверх standard Android API?
+-   Какие устройства потеряли OEM capability после обновления
+    Android/Knox?
+-   Какие устройства находятся в non-compliant состоянии?
+-   Какие приложения установлены на managed device в рамках разрешённого
+    enterprise inventory?
+-   Какой источник предоставил конкретную telemetry metric?
+-   Почему конкретная метрика недоступна?
+-   Продолжает ли monitoring agent работать при отсутствии Knox?
+
+Главный архитектурный результат MVP — создать vendor-neutral OEM
+telemetry framework и подтвердить его работоспособность на Samsung
+Knox + SOTI MobiControl без root-доступа.
+
+ПРИМЕЧАНИЕ
+
+Перечень конкретных Samsung Knox API, permissions, license requirements
+и доступных системных метрик необходимо зафиксировать отдельно после
+выбора целевых моделей Samsung, Android/Knox versions и версии SOTI
+MobiControl. Наличие OEM extension само по себе не гарантирует доступ ко
+всем системным показателям.

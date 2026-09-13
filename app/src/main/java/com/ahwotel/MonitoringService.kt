@@ -20,7 +20,10 @@ class MonitoringService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val paused = intent.action == Intent.ACTION_SCREEN_OFF && !app.settings.value.collectScreenOff
-            if (active != null) app.state.value = app.state.value.copy(paused = paused)
+            scope.launch { app.mutex.withLock {
+                active?.let { app.updateSessionRuntimeLocked(it, paused, SystemClock.elapsedRealtime()) }
+                app.timingChanges.trySend(Unit)
+            } }
         }
     }
     override fun onBind(intent: Intent?) = null
@@ -37,15 +40,18 @@ class MonitoringService : Service() {
         else startForeground(42, notification)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         scope.launch {
             try {
                 app.ready.await()
                 if (intent?.action == STOP) {
                     val id = intent.getStringExtra("sessionId")
-                    if (id == active) job?.cancel()
-                    else app.logs.event("stop_session_mismatch", error = true)
-                    if (active == null) stopSelf()
+                    app.mutex.withLock {
+                        if (id != null && id == active && app.requestSessionStopLocked(id, "manual_stop")) job?.cancel()
+                        else app.logs.event("stop_session_mismatch", error = true)
+                        if (active == null) stopSelf()
+                    }
                     return@launch
                 }
                 val request = parse(intent, app.settings.value)
@@ -63,27 +69,28 @@ class MonitoringService : Service() {
                         continuous = request.continuous, durationSeconds = request.durationSeconds)
                     app.db.dao().start(session)
                     active = request.id
-                    app.state.value = RuntimeState(sessionId = active)
+                    val timing = SessionTiming(session.id, SystemClock.elapsedRealtime(), session.continuous, session.durationSeconds)
+                    app.sessionTiming = timing
+                    app.state.value = timing.runtime(false, timing.startedElapsedMs)
                     refreshNotification()
                     app.logs.event("session_started")
-                    job = scope.launch { runSession(session, snapshot) }
+                    job = scope.launch(start = CoroutineStart.ATOMIC) { runSession(session, snapshot, timing.startedElapsedMs) }
                 }
-            } catch (_: Exception) {
-                app.logs.event("command_rejected", error = true)
-                if (active == null) { app.state.value = RuntimeState(error = "command_rejected"); stopSelf() }
+            } catch (e: Exception) {
+                val code = if (e.message == "no_collectors") "no_collectors" else "command_rejected"
+                app.logs.event(code, error = true)
+                if (active == null) { app.state.value = RuntimeState(error = code); stopSelf() }
             }
         }
         return START_NOT_STICKY
     }
 
-    private suspend fun runSession(session: SessionRow, snapshot: Settings) {
-        val collectors = Collectors(this, snapshot, app.sources)
+    private suspend fun runSession(session: SessionRow, snapshot: Settings, start: Long) {
+        val collectors = Collectors(this, snapshot.copy(enabled = snapshot.enabled - CollectorKind.BATTERY), app.sources)
         val probe = if (CollectorKind.CPU in snapshot.enabled && snapshot.indirectCpu) CpuProbe(snapshot.intervalMs) else null
         app.sources.beginCheck()
         var checkGeneration = app.sourceCheckGeneration.get()
         val power = getSystemService(PowerManager::class.java)
-        val start = SystemClock.elapsedRealtime()
-        val deadline = if (session.continuous) Long.MAX_VALUE else start + session.durationSeconds * 1000
         var next = start
         var previous: Long? = null
         var previousWall: Long? = null
@@ -96,14 +103,18 @@ class MonitoringService : Service() {
         var lastCapabilities = ""
         var notificationLanguage = snapshot.language
         try {
+            app.agentTelemetry.start(session, snapshot)
+            app.oem.start(session)
             while (currentCoroutineContext().isActive) {
                 val now = SystemClock.elapsedRealtime()
-                if (now >= deadline) { endReason = "timeout"; break }
                 val shouldPause = !power.isInteractive && !app.settings.value.collectScreenOff
+                val completion = app.mutex.withLock { app.updateSessionRuntimeLocked(session.id, shouldPause, now) }
+                if (completion != null) { endReason = completion; break }
                 if (shouldPause != paused) {
                     paused = shouldPause
                     probe?.setPaused(paused)
                     collectors.reset(); segment++; previous = null; previousWall = null
+                    if (!paused) next = now
                     app.logs.event(if (paused) "screen_off_paused" else "screen_on_resumed")
                 }
                 updateWakeLock(!paused && app.settings.value.collectScreenOff)
@@ -111,14 +122,19 @@ class MonitoringService : Service() {
                     notificationLanguage = app.settings.value.language
                     refreshNotification()
                 }
-                app.state.value = RuntimeState(session.id, paused,
-                    if (session.continuous) null else ((deadline - now) / 1000).coerceAtLeast(0))
                 if (checkGeneration != app.sourceCheckGeneration.get()) {
                     checkGeneration = app.sourceCheckGeneration.get()
                     collectors.recheck(); probe?.recheck(); app.sources.beginCheck(); next = now
                     app.logs.event("source_check_started", diagnostic = true)
                 }
+                app.agentTelemetry.tick(paused, now)
                 if (!paused && now >= next) {
+                    val lateness = (now - next).coerceAtLeast(0)
+                    app.costs.add(AgentMetric.SCHEDULED, 1.0 + lateness / snapshot.intervalMs)
+                    app.costs.add(AgentMetric.EXECUTED, 1.0)
+                    app.costs.add(AgentMetric.MISSED, (lateness / snapshot.intervalMs).toDouble())
+                    app.costs.add(AgentMetric.DELAY, lateness.toDouble())
+                    if (lateness > 100) app.costs.add(AgentMetric.DELAYED, 1.0)
                     val wall = System.currentTimeMillis()
                     val gap = previous?.let { now - it > snapshot.intervalMs * 3 } == true
                     val clockChanged = previousWall?.let { w -> kotlin.math.abs((wall - w) - (now - (previous ?: now))) > 2000 } == true
@@ -131,20 +147,28 @@ class MonitoringService : Service() {
                         .joinToString(";") { "${it.metric.name}=${it.status.name}" }
                     val sample = raw.withProbe(reading, probeElapsed, snapshot.intervalMs).copy(
                         sources = app.sources.sampleJson(), capabilities = raw.capabilities + ";" + probeStatuses)
-                    app.mutex.withLock {
+                    val recorded = app.mutex.withLock {
+                        val stop = app.updateSessionRuntimeLocked(session.id, paused, SystemClock.elapsedRealtime())
+                        if (stop != null) { endReason = stop; return@withLock false }
                         if (app.settings.value.otlpEnabled && telemetry == null) telemetry = Telemetry(session)
                         if (!app.settings.value.otlpEnabled) { telemetry?.close(); telemetry = null }
+                        val writeStarted = SystemClock.elapsedRealtime()
                         app.db.dao().sample(sample)
+                        app.costs.operation("database_write", writeStarted, true, samples = 1)
                         try {
                             telemetry?.let { otel ->
+                                val encodeStarted = SystemClock.elapsedRealtime()
                                 val payload = otel.encode(sample)
+                                app.costs.operation("serialization", encodeStarted, true, bytes = payload.size.toLong())
                                 if (payload.size <= 1024 * 1024) app.db.dao().enqueue(OutboxRow(
-                                    createdAt = wall, endpoint = app.settings.value.endpoint, payload = payload))
+                                    createdAt = wall, endpoint = app.settings.value.endpoint, payload = payload, dueAt = wall + app.settings.value.uploadIntervalSeconds * 1000L))
                                 else app.logs.event("otlp_request_too_large", error = true)
                             }
                         } catch (_: Exception) { app.logs.event("otlp_encode_failed", error = true) }
                         if (now >= cleanupAt) { app.cleanupLocked(); cleanupAt = now + 60_000 }
+                        true
                     }
+                    if (!recorded) break
                     if (sample.capabilities != lastCapabilities) {
                         app.logs.event("capabilities_changed", diagnostic = true)
                         if (sample.capabilities.contains("UNSUPPORTED")) app.logs.event("collector_unsupported")
@@ -158,8 +182,12 @@ class MonitoringService : Service() {
                     previous = now; previousWall = wall
                     next = now + snapshot.intervalMs
                 }
-                delay(minOf(1000L, if (paused) 1000L else (next - SystemClock.elapsedRealtime()).coerceAtLeast(100L),
-                    (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L)))
+                val wait = app.mutex.withLock {
+                    val deadline = app.sessionTiming?.takeIf { it.sessionId == session.id }?.deadline ?: 0L
+                    minOf(1000L, if (paused) 1000L else (next - SystemClock.elapsedRealtime()).coerceAtLeast(100L),
+                        (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1L))
+                }
+                withTimeoutOrNull(wait) { app.timingChanges.receive() }
             }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { endReason = "storage_or_collection_failed"; app.logs.event(endReason, error = true) }
@@ -168,12 +196,17 @@ class MonitoringService : Service() {
             updateWakeLock(false)
             telemetry?.close()
             withContext(NonCancellable) {
+                app.oem.stop(session.id)
+                runCatching { app.agentTelemetry.stop() }.onFailure { app.logs.event("self_telemetry_flush_failed", error = true) }
                 app.mutex.withLock {
+                    app.sessionTiming?.takeIf { it.sessionId == session.id }?.stopReason?.let { endReason = it }
                     runCatching { app.db.dao().finish(session.id, System.currentTimeMillis(), endReason) }
                         .onFailure { app.logs.event("session_finish_write_failed", error = true) }
                     active = null
+                    app.sessionTiming = null
                     app.state.value = RuntimeState(error = if (endReason == "storage_or_collection_failed") endReason else null)
                 }
+                if (endReason == "timeout") app.logs.event("session_timer_expired", diagnostic = true)
                 app.logs.event("session_finished")
                 app.scheduleUpload()
             }
@@ -187,8 +220,9 @@ class MonitoringService : Service() {
             if (wakeLock?.isHeld != true) wakeLock = getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AHWOTel:Monitoring").apply {
                     setReferenceCounted(false); acquire(10 * 60_000L)
+                    app.costs.wakeAcquire(SystemClock.elapsedRealtime(), 10 * 60_000L)
                 }
-        } else { wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null }
+        } else { app.costs.wakeRelease(SystemClock.elapsedRealtime()); wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null }
     }
 
     private fun notification(): Notification {
@@ -206,6 +240,10 @@ class MonitoringService : Service() {
             getSystemService(NotificationManager::class.java).notify(42, notification())
     }
     override fun onDestroy() { unregisterReceiver(screenReceiver); job?.cancel(); scope.cancel(); updateWakeLock(false); super.onDestroy() }
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        app.logs.event("monitoring_task_removed", diagnostic = true)
+        super.onTaskRemoved(rootIntent)
+    }
     override fun onTimeout(startId: Int, fgsType: Int) { job?.cancel(); stopSelf() }
 
     companion object {
@@ -213,8 +251,15 @@ class MonitoringService : Service() {
         const val STOP = "com.ahwotel.STOP"
         const val CHANNEL = "monitoring"
         fun parse(intent: Intent?, settings: Settings): StartRequest {
+            require(settings.monitoringEnabled)
             require(intent?.action == START)
-            val metrics = intent.getStringExtra("metrics")?.split(',')?.map { CollectorKind.valueOf(it.trim().uppercase()) }?.toSet() ?: settings.enabled
+            val raw = intent.getStringExtra("metrics")
+            val metrics = when {
+                raw == null -> settings.enabled
+                raw.isBlank() -> emptySet()
+                else -> raw.split(',').map { CollectorKind.valueOf(it.trim().uppercase()) }.toSet()
+            }
+            require(settings.hasCollectors(metrics)) { "no_collectors" }
             return StartRequest(intent.getStringExtra("sessionId") ?: UUID.randomUUID().toString(),
                 intent.getBooleanExtra("continuous", settings.continuous),
                 intent.getLongExtra("durationSeconds", settings.durationSeconds),

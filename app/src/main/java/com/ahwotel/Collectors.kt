@@ -8,6 +8,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.StatFs
+import android.os.SystemClock
 
 class Collectors(private val context: Context, private val settings: Settings,
     private val registry: SourceRegistry? = null, reader: ProcReader = AndroidProcReader) {
@@ -24,7 +25,9 @@ class Collectors(private val context: Context, private val settings: Settings,
         val reasons = mutableMapOf<String, SourceReason>()
         fun run(kind: CollectorKind, action: () -> Unit) {
             if (kind !in settings.enabled) { capabilities[kind.name] = Availability.DISABLED; return }
-            try { capabilities[kind.name] = Availability.AVAILABLE; action() }
+            val began = SystemClock.elapsedRealtime()
+            var successful = false
+            try { capabilities[kind.name] = Availability.AVAILABLE; action(); successful = true }
             catch (e: SourceFailure) {
                 capabilities[kind.name] = e.availability; reasons[kind.name] = e.reason
                 if (kind == CollectorKind.CPU) previousCpu = null
@@ -32,6 +35,7 @@ class Collectors(private val context: Context, private val settings: Settings,
             catch (_: SecurityException) { capabilities[kind.name] = Availability.UNSUPPORTED; reasons[kind.name] = SourceReason.PERMISSION_DENIED }
             catch (_: UnsupportedOperationException) { capabilities[kind.name] = Availability.UNSUPPORTED; reasons[kind.name] = SourceReason.API_UNAVAILABLE }
             catch (_: Exception) { capabilities[kind.name] = Availability.ERROR; reasons[kind.name] = SourceReason.READ_FAILED }
+            finally { (context.applicationContext as? MonitorApp)?.costs?.operation("${kind.name.lowercase()}_collector", began, successful, samples = if (successful) 1 else 0) }
         }
         run(CollectorKind.MEMORY) {
             val info = ActivityManager.MemoryInfo()

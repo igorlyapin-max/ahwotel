@@ -23,8 +23,27 @@ source = (base.parent / 'java/com/ahwotel/Database.kt').read_text()
 metrics = re.findall(r'^\s+([A-Z][A-Z_]+)\("', source, re.M)
 sections = ('meaning', 'units', 'impact', 'reading', 'example', 'limits', 'state', 'source')
 expected = {f'help_{metric.lower()}_{section}' for metric in metrics for section in sections}
+oem_source = (base.parent / 'java/com/ahwotel/oem/OemModel.kt').read_text()
+oem_metrics = re.findall(r'^\s+([A-Z][A-Z_]+)\("', oem_source, re.M)
+expected |= {f'oem_{metric.lower()}_{section}' for metric in oem_metrics for section in sections}
+expected |= {f'oem_{metric.lower()}_title' for metric in oem_metrics}
 for locale in (english, russian):
     for name in expected:
         assert name in locale and locale[name].strip(), f'Missing help section: {name}'
 assert len(metrics) == len(set(metrics)) and metrics
-print(f'PASS: {len(english)} EN/RU strings, matching placeholders; {len(metrics)} metrics × {len(sections)} help sections per language')
+references = (base.parent / 'java/com/ahwotel/OemTextResources.kt').read_text()
+assert {k for k in english if k.startswith('oem_')} == set(re.findall(r'R\.string\.(oem_[a-z_]+)', references)), 'Run scripts/update-oem-resources.py'
+agent_source = (base.parent / 'java/com/ahwotel/AgentMetric.kt').read_text()
+agent_metrics = re.findall(r'^\s+([A-Z][A-Z_]+)\("', agent_source, re.M)
+agent_wires = dict(re.findall(r'^\s+([A-Z][A-Z_]+)\("([^"]+)"', agent_source, re.M))
+for name in agent_metrics:
+    for locale in (english, russian):
+        assert locale.get(f'at_{name.lower()}_title')
+        help_text = locale.get(f'at_{name.lower()}_help', '')
+        assert '\\n' + agent_wires[name] + '.' in help_text, f'Incorrect wire ID in help: {name}'
+        assert help_text.count('\\n\\n') == 7, f'Expected eight help sections: {name}'
+# Known prose regressions in the new battery/Self surface. Technical wire/API IDs remain verbatim.
+for name, value in russian.items():
+    if name.startswith('at_'):
+        assert not re.search(r'(?<![A-Za-z_.])(baseline|payload|Stop|runtime|heap|release|timeout)(?![A-Za-z_.])', value), f'Untranslated prose: {name}'
+print(f'PASS: {len(english)} EN/RU strings, matching placeholders; {len(metrics)} base + {len(oem_metrics)} OEM metrics × {len(sections)} help sections per language')

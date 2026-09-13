@@ -24,6 +24,8 @@ import kotlinx.coroutines.*
 import kotlin.math.abs
 
 @Composable fun HistoryScreen(app: MonitorApp) {
+    var extraPage by remember { mutableStateOf<String?>(null) }
+    if (extraPage != null) { AgentTelemetryScreen(app, extraPage == "battery") { extraPage = null }; return }
     val sessionsFlow = remember { app.db.dao().sessions() }
     val sessions by sessionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     var selected by remember { mutableStateOf<String?>(null) }
@@ -53,6 +55,10 @@ import kotlin.math.abs
         Metric.HEADROOM, Metric.BATTERY, Metric.TEMPERATURE, Metric.STATE)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle(stringResource(R.string.history)) }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({ extraPage = "battery" }) { Text(stringResource(R.string.at_battery_title)) }
+            OutlinedButton({ extraPage = "self" }) { Text(stringResource(R.string.at_self_title)) }
+        } }
         item { Panel(stringResource(R.string.sessions)) {
             Box {
                 OutlinedButton({ expanded = true }) { Text(selected ?: stringResource(R.string.all_sessions)) }
@@ -102,51 +108,14 @@ import kotlin.math.abs
     }
     val title = metricTitle(metric)
     val isState = metric == Metric.STATE || metric.name.endsWith("_PRESSURE")
-    var selected by remember(points) { mutableStateOf<ChartBucket?>(null) }
+    val states = when {
+        isState -> (0..3).map { severityText(it.toDouble()) }
+        metric == Metric.THERMAL -> stringResource(R.string.chart_thermal_states).split("|")
+        else -> emptyList()
+    }
     Panel(title, help = metric, helpContext = HelpContext.HISTORY) {
         if (metric.isProbe) Text(stringResource(if (metric == Metric.CPU_WAIT) R.string.cpu_wait_hint else R.string.probe_delay_hint), style = MaterialTheme.typography.bodySmall)
-        if (isState) Text((0..3).joinToString(" · ") { it.toString() } + "\n" +
-            listOf(severityText(0.0), severityText(1.0), severityText(2.0), severityText(3.0)).joinToString(" · "),
-            style = MaterialTheme.typography.labelSmall)
-        if (points.none { it.mean != null }) Text(stringResource(R.string.no_data), Modifier.padding(vertical = 28.dp))
-        else {
-            val minimum = points.mapNotNull { it.low }.minOrNull() ?: 0.0
-            val maximum = points.mapNotNull { it.high }.maxOrNull() ?: 1.0
-            val low = minOf(0.0, minimum)
-            val high = maxOf(maximum, low + 1.0)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatValue(low, metric), style = MaterialTheme.typography.labelSmall)
-                Text(formatValue(high, metric), style = MaterialTheme.typography.labelSmall)
-            }
-            Canvas(Modifier.fillMaxWidth().height(160.dp).semantics { contentDescription = title }
-                .pointerInput(points, from, to) { detectTapGestures { position ->
-                    val time = from + position.x / size.width * (to - from)
-                    selected = points.filter { it.mean != null }.minByOrNull { abs(it.time - time) }
-                } }) {
-                fun x(t: Long) = ((t - from).toDouble() / (to - from).coerceAtLeast(1) * size.width).toFloat()
-                fun y(v: Double) = (size.height - (v - low) / (high - low) * size.height).toFloat()
-                repeat(4) { i -> drawLine(Color(0xFF2A3A46), Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3), 1f) }
-                var previous: ChartBucket? = null
-                points.forEach { p ->
-                    if (p.mean != null && p.low != null && p.high != null) {
-                        val px = x(p.time)
-                        drawLine(Accent.copy(alpha = 0.3f), Offset(px, y(p.low)), Offset(px, y(p.high)), 3f)
-                        val prev = previous
-                        val display = if (isState) p.high else p.mean
-                        if (prev?.mean != null && p.segment >= 0 && prev.sessionId == p.sessionId && prev.segment == p.segment && p.bucket - prev.bucket <= 1) {
-                            val old = if (isState) prev.high ?: prev.mean else prev.mean
-                            if (isState) {
-                                drawLine(Accent, Offset(x(prev.time), y(old)), Offset(px, y(old)), 2f)
-                                drawLine(Accent, Offset(px, y(old)), Offset(px, y(display)), 2f)
-                            } else drawLine(Accent, Offset(x(prev.time), y(old)), Offset(px, y(display)), 2f)
-                        }
-                        drawCircle(Accent, 2f, Offset(px, y(display)))
-                    }
-                    previous = p
-                }
-                selected?.mean?.let { mean -> drawCircle(Color.White, 5f, Offset(x(selected!!.time), y(mean))) }
-            }
-            selected?.let { Text("${formatTime(it.time)}\n${formatValue(it.low, metric)} / ${formatValue(it.mean, metric)} / ${formatValue(it.high, metric)}", style = MaterialTheme.typography.bodySmall) }
-        }
+        MetricPlot(title, points, from, to, metric.unit,
+            if (isState) 3.0 else if (metric == Metric.THERMAL) 6.0 else if (metric.unit == "%") 100.0 else null, states)
     }
 }

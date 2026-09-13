@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="monitoring_enabled" android:restrictionType="bool" android:title="@string/monitoring" android:defaultValue="true" />
+    <restriction android:key="oem_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_enabled" android:defaultValue="false" />
+    <restriction android:key="knox_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_knox" android:defaultValue="true" />
+    <restriction android:key="sampling_profile" android:restrictionType="string" android:title="@string/oem_profile" android:defaultValue="balanced" />
+    <restriction android:key="upload_interval" android:restrictionType="integer" android:title="@string/oem_upload_interval" android:defaultValue="0" />
+    <restriction android:key="application_inventory_enabled" android:restrictionType="bool" android:title="@string/oem_category_inventory" android:defaultValue="true" />
+    <restriction android:key="security_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_category_security" android:defaultValue="true" />
+    <restriction android:key="network_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_category_network" android:defaultValue="true" />
+    <restriction android:key="debug_mode" android:restrictionType="string" android:title="@string/debug_level" android:defaultValue="off" />
+    <restriction android:key="backend_environment" android:restrictionType="string" android:title="@string/oem_environment" android:defaultValue="local" />
+    <restriction android:key="config_version" android:restrictionType="string" android:title="@string/oem_profile" android:defaultValue="1" />
+</restrictions>

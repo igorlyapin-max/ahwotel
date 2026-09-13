@@ -40,7 +40,7 @@ class Telemetry(session: SessionRow) : AutoCloseable {
                 else observer.record(it)
             }
         }
-    } + CollectorKind.entries.map { kind ->
+    } + CollectorKind.entries.filter { it != CollectorKind.BATTERY }.map { kind ->
         meter.gaugeBuilder("device.${kind.name.lowercase()}.supported").buildWithCallback { observer ->
             val status = current?.capabilities?.split(';')?.find { it.startsWith("${kind.name}=") }?.substringAfter('=')
             if (!probePhase) when (status) {
@@ -81,6 +81,7 @@ class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
         require(Settings.validEndpoint(row.endpoint))
         require(row.payload.size <= 1024 * 1024)
         val request = Request.Builder().url(row.endpoint)
+            .apply { if (row.compressed) header("Content-Encoding", "gzip") }
             .post(row.payload.toRequestBody("application/x-protobuf".toMediaType())).build()
         return client.newCall(request).execute().use { response ->
             // A nonempty OTLP response may contain partial_success; do not silently call it success.

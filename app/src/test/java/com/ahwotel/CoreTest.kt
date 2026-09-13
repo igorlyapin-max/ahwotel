@@ -61,7 +61,9 @@ class CoreTest {
         val s = Settings(deviceId = "test")
         assertFalse(StartRequest("s", false, 300, 10, s.enabled).valid(s))
         assertFalse(StartRequest("s", false, 90000, 2000, s.enabled).valid(s))
-        assertFalse(StartRequest("s", false, 300, 2000, emptySet()).valid(s))
+        assertTrue(StartRequest("s", false, 300, 2000, emptySet()).valid(s))
+        val empty=s.copy(batterySettings=BatterySettings(enabled=false),selfTelemetry=SelfTelemetrySettings(enabled=false))
+        assertFalse(StartRequest("s", false, 300, 2000, emptySet()).valid(empty))
     }
     @Test fun csvNeutralizesSpreadsheetFormula() {
         assertEquals("\"'=cmd()\"", Exporter.csv("=cmd()"))

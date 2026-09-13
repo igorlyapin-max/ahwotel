@@ -1,0 +1,28 @@
+<resources>
+<string name="chart_mixed">Multiple observed states</string>
+<string name="chart_gap">Data gap or session boundary</string>
+<string name="chart_unknown_state">Unknown state</string>
+<string name="chart_nominal_legend">Steps: observed states, not severity. Tap a point for its state.</string>
+<string name="chart_sum_legend">Line: sum for each displayed time interval. Tap for the sum.</string>
+<string name="chart_max_legend">Line: maximum for each displayed time interval. Tap for the maximum.</string>
+<string name="chart_break_legend">Cross: data gap, session boundary or multiple states in an interval. No continuous trace is inferred.</string>
+<string name="chart_selected_sum">Sum for interval: %1$s %2$s</string>
+<string name="chart_selected_max">Maximum for interval: %1$s %2$s</string>
+<string name="at_health_good">Good</string>
+<string name="at_health_hot">Overheated</string>
+<string name="at_health_dead">Failed battery</string>
+<string name="at_health_voltage">Over voltage</string>
+<string name="at_health_failure">Unspecified failure</string>
+<string name="at_health_cold">Cold</string>
+<string name="at_status_charging">Charging</string>
+<string name="at_status_discharging">Discharging</string>
+<string name="at_status_idle">Not charging</string>
+<string name="at_status_full">Full</string>
+<string name="at_plug_none">Unplugged</string>
+<string name="at_plug_ac">AC power</string>
+<string name="at_plug_usb">USB</string>
+<string name="at_plug_wireless">Wireless power</string>
+<string name="at_state_no">No</string>
+<string name="at_state_yes">Yes</string>
+<string name="at_state_unknown">Unknown (%1$d)</string>
+</resources>

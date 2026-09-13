@@ -35,7 +35,9 @@ data class SampleRow(
 
 @Entity(tableName = "outbox", indices = [Index("createdAt")])
 data class OutboxRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val createdAt: Long,
-    val endpoint: String, val payload: ByteArray, val attempts: Int = 0, val nextAttempt: Long = 0)
+    val endpoint: String, val payload: ByteArray, val attempts: Int = 0, val nextAttempt: Long = 0,
+    @ColumnInfo(defaultValue = "'main'") val stream: String = "main", @ColumnInfo(defaultValue = "0") val dueAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val compressed: Boolean = false)
 
 data class ChartBucket(val bucket: Long, val segment: Int, val sessionId: String,
     val time: Long, val low: Double?, val high: Double?, val mean: Double?, val count: Int)
@@ -83,6 +85,8 @@ interface MonitorDao {
     @Insert suspend fun enqueue(row: OutboxRow)
     @Query("SELECT * FROM sessions ORDER BY startedAt DESC LIMIT 200") fun sessions(): Flow<List<SessionRow>>
     @Query("SELECT * FROM sessions WHERE id=:id") suspend fun session(id: String): SessionRow?
+    @Query("UPDATE sessions SET continuous=:continuous, durationSeconds=:duration, configuration=:configuration WHERE id=:id AND status='RUNNING'")
+    suspend fun updateTiming(id: String, continuous: Boolean, duration: Long, configuration: String): Int
     @Query("UPDATE sessions SET endedAt=:end, status='FINISHED', endReason=:reason WHERE id=:id AND status='RUNNING'")
     suspend fun finish(id: String, end: Long, reason: String)
     @Query("UPDATE sessions SET status='INTERRUPTED', endReason='process_interrupted', endedAt=COALESCE((SELECT MAX(time) FROM samples WHERE samples.sessionId=sessions.id), startedAt) WHERE status='RUNNING'")
@@ -92,22 +96,27 @@ interface MonitorDao {
     suspend fun page(after: Long, session: String?, from: Long, to: Long): List<SampleRow>
     @Query("DELETE FROM samples WHERE time < :cutoff") suspend fun expire(cutoff: Long): Int
     @Query("DELETE FROM samples WHERE id IN (SELECT id FROM samples ORDER BY time LIMIT :count)") suspend fun trim(count: Int): Int
-    @Query("DELETE FROM sessions WHERE status!='RUNNING' AND COALESCE(endedAt,startedAt)<:cutoff AND id NOT IN (SELECT DISTINCT sessionId FROM samples)") suspend fun expireSessions(cutoff: Long)
+    @Query("DELETE FROM sessions WHERE status!='RUNNING' AND COALESCE(endedAt,startedAt)<:cutoff AND id NOT IN (SELECT sessionId FROM samples UNION SELECT sessionId FROM oem_observations UNION SELECT sessionId FROM oem_inventory UNION SELECT sessionId FROM oem_events UNION SELECT sessionId FROM telemetry_records)") suspend fun expireSessions(cutoff: Long)
     @Query("SELECT COUNT(*) FROM samples") suspend fun sampleCount(): Long
     @Query("SELECT MIN(time) FROM samples") suspend fun earliest(): Long?
     @Query("SELECT * FROM outbox ORDER BY id LIMIT 1") suspend fun firstPending(): OutboxRow?
+    @Query("SELECT * FROM outbox WHERE dueAt<=:now AND nextAttempt<=:now ORDER BY id LIMIT 1") suspend fun readyPending(now: Long): OutboxRow?
+    @Query("SELECT MIN(MAX(dueAt,nextAttempt)) FROM outbox") suspend fun nextPendingTime(): Long?
     @Query("DELETE FROM outbox WHERE id=:id") suspend fun deletePending(id: Long)
     @Query("DELETE FROM outbox") suspend fun clearOutbox()
-    @Query("DELETE FROM outbox WHERE createdAt<:cutoff") suspend fun expireOutbox(cutoff: Long): Int
+    @Query("DELETE FROM outbox WHERE createdAt + :retentionMs <= :now AND dueAt + 3600000 <= :now")
+    suspend fun expireOutbox(now: Long, retentionMs: Long): Int
     @Query("SELECT COALESCE(SUM(length(payload)),0) FROM outbox") suspend fun outboxBytes(): Long
     @Query("SELECT COUNT(*) FROM outbox") suspend fun outboxCount(): Long
     @Query("UPDATE outbox SET attempts=:attempts, nextAttempt=:next WHERE id=:id") suspend fun retry(id: Long, attempts: Int, next: Long)
     @RawQuery suspend fun chart(query: SupportSQLiteQuery): List<ChartBucket>
 }
 
-@Database(entities = [SessionRow::class, SampleRow::class, OutboxRow::class], version = 2, exportSchema = true)
+@Database(entities = [SessionRow::class, SampleRow::class, OutboxRow::class, OemObservationRow::class, OemProfileRow::class, OemInventoryRow::class, OemEventRow::class, TelemetryRecord::class, TelemetrySchedule::class], version = 4, exportSchema = true)
 abstract class MonitorDatabase : RoomDatabase() {
+    abstract fun agentDao(): AgentTelemetryDao
     abstract fun dao(): MonitorDao
+    abstract fun oemDao(): OemDao
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -116,8 +125,32 @@ abstract class MonitorDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_samples_probeTime ON samples(probeTime)")
             }
         }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS oem_observations (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sessionId TEXT NOT NULL, time INTEGER NOT NULL, segment INTEGER NOT NULL, metric TEXT NOT NULL, provider TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL, unit TEXT NOT NULL, number REAL, text TEXT, status TEXT NOT NULL, reason TEXT NOT NULL, quality TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_oem_observations_time ON oem_observations(time)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_oem_observations_metric_provider_time ON oem_observations(metric,provider,time)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS oem_profiles (provider TEXT NOT NULL PRIMARY KEY, time INTEGER NOT NULL, payload TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS oem_inventory (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sessionId TEXT NOT NULL, time INTEGER NOT NULL, provider TEXT NOT NULL, complete INTEGER NOT NULL, payload TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_oem_inventory_time ON oem_inventory(time)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS oem_events (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sessionId TEXT NOT NULL, time INTEGER NOT NULL, provider TEXT NOT NULL, subject TEXT NOT NULL, kind TEXT NOT NULL, before TEXT, after TEXT)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_oem_events_time ON oem_events(time)")
+            }
+        }
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE outbox ADD COLUMN stream TEXT NOT NULL DEFAULT 'main'")
+                db.execSQL("ALTER TABLE outbox ADD COLUMN dueAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE outbox ADD COLUMN compressed INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE TABLE IF NOT EXISTS telemetry_schedule (name TEXT NOT NULL PRIMARY KEY, last INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS telemetry_records (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, sessionId TEXT NOT NULL, stream TEXT NOT NULL, metric TEXT NOT NULL, component TEXT NOT NULL, time INTEGER NOT NULL, start INTEGER NOT NULL, durationMs INTEGER NOT NULL, segment INTEGER NOT NULL, value REAL, low REAL, high REAL, sum REAL, count INTEGER NOT NULL, p50 REAL, p95 REAL, text TEXT, status TEXT NOT NULL, reason TEXT NOT NULL, source TEXT NOT NULL, quality TEXT NOT NULL, metadata TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_records_time ON telemetry_records(time)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_records_metric_time ON telemetry_records(metric,time)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_records_sessionId ON telemetry_records(sessionId)")
+            }
+        }
         fun create(context: Context) = Room.databaseBuilder(context, MonitorDatabase::class.java, "monitor.db")
-            .addMigrations(MIGRATION_1_2).setJournalMode(JournalMode.WRITE_AHEAD_LOGGING).build()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).setJournalMode(JournalMode.WRITE_AHEAD_LOGGING).build()
     }
 }
 

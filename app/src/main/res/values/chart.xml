@@ -1,0 +1,10 @@
+<resources>
+    <string name="chart_next_point">Next reading</string>
+    <string name="chart_previous_point">Previous reading</string>
+    <string name="chart_thermal_states">None|Light|Moderate|Severe|Critical|Emergency|Shutdown</string>
+    <string name="chart_axis_value">Value · %1$s</string>
+    <string name="chart_axis_time">Time · %1$s</string>
+    <string name="chart_numeric_legend">Line: average · shaded range: minimum–maximum. Tap a point for values.</string>
+    <string name="chart_state_legend">Steps: highest severity in each time interval. Tap for the state.</string>
+    <string name="chart_selected_values">Minimum: %1$s\nAverage: %2$s\nMaximum: %3$s %4$s</string>
+</resources>

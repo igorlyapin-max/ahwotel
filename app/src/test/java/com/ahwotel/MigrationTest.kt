@@ -15,6 +15,36 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = android.app.Application::class)
 class MigrationTest {
+    @Test fun upgradesV2WithNonemptyProbeHistoryAndOutbox() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "oem-migration-v2.db"
+        context.deleteDatabase(name)
+        val path = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
+        val entities = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.ahwotel.MonitorDatabase/2.json")!!.bufferedReader().readText())
+            .getJSONObject("database").getJSONArray("entities")
+        SQLiteDatabase.openOrCreateDatabase(path, null).use { old ->
+            for (i in 0 until entities.length()) {
+                val entity = entities.getJSONObject(i)
+                fun sql(value: String) = value.replace("\${TABLE_NAME}", entity.getString("tableName"))
+                old.execSQL(sql(entity.getString("createSql")))
+                val indices = entity.optJSONArray("indices") ?: org.json.JSONArray()
+                for (j in 0 until indices.length()) old.execSQL(sql(indices.getJSONObject(j).getString("createSql")))
+            }
+            old.execSQL("INSERT INTO sessions(id,deviceId,startedAt,status,reason,configuration,continuous,durationSeconds) VALUES('v2','device',100,'FINISHED','','{}',0,300)")
+            old.execSQL("INSERT INTO samples(sessionId,time,elapsed,segment,capabilities,screenOn,cpuWait,probeDelay,probeTime,probeInterval,probeSegment,sources) VALUES('v2',101,1,0,'CPU=UNSUPPORTED',1,10.0,12.0,99,1000,2,'[]')")
+            old.execSQL("INSERT INTO outbox(createdAt,endpoint,payload,attempts,nextAttempt) VALUES(101,'https://example.org/v1/metrics',X'040506',2,202)")
+            old.version = 2
+        }
+        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4).allowMainThreadQueries().build()
+        try {
+            assertEquals(1L, db.dao().sampleCount()); assertEquals(0L, db.oemDao().count())
+            val row = db.dao().page(0, "v2", 0, 200).single()
+            assertEquals(10.0, row.cpuWait!!, 0.0); assertEquals(99L, row.probeTime); assertEquals("[]", row.sources)
+            assertEquals(2, db.dao().firstPending()!!.attempts); assertEquals(202L, db.dao().firstPending()!!.nextAttempt)
+            assertArrayEquals(byteArrayOf(4, 5, 6), db.dao().firstPending()!!.payload)
+        } finally { db.close(); context.deleteDatabase(name) }
+        Unit
+    }
     @Test fun upgradesRealV1SchemaWithoutLosingHistoryOrOutbox() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-test.db"
@@ -35,7 +65,7 @@ class MigrationTest {
             old.execSQL("INSERT INTO outbox(createdAt,endpoint,payload,attempts,nextAttempt) VALUES(101,'https://example.org/v1/metrics',X'010203',0,0)")
             old.version = 1
         }
-        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_1_2)
+        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_1_2, MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4)
             .allowMainThreadQueries().build()
         try {
                 assertEquals(1L, db.dao().sampleCount())

@@ -17,6 +17,8 @@ import kotlinx.coroutines.*
 import java.io.File
 
 @Composable fun DiagnosticsScreen(app: MonitorApp) {
+    var oem by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (oem) { OemScreen(app) { oem = false }; return }
     val stats by app.stats.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
     val reports by app.sources.reports.collectAsStateWithLifecycle()
@@ -39,6 +41,7 @@ import java.io.File
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle(stringResource(R.string.diagnostics)) }
+        item { Button({ oem = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oem_title)) } }
         item { MetricGuideButton() }
         item { Panel(stringResource(R.string.source_availability)) {
             Text(stringResource(R.string.source_check_hint), style = MaterialTheme.typography.bodySmall)
@@ -56,7 +59,7 @@ import java.io.File
         item { Panel(stringResource(R.string.device)) {
             Text("${Build.MANUFACTURER} ${Build.MODEL}")
             Text("Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
-            Text("AHWOTel ${BuildConfig.VERSION_NAME}")
+            Text("AHWOTel ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             Text(settings.deviceId)
         } }
         item { Panel(stringResource(R.string.retention)) {

@@ -24,6 +24,12 @@ data class Thresholds(
 }
 
 data class Settings(
+    val monitoringEnabled: Boolean = true,
+    val batterySettings: BatterySettings = BatterySettings(),
+    val selfTelemetry: SelfTelemetrySettings = SelfTelemetrySettings(),
+    val oem: com.ahwotel.oem.OemSettings = com.ahwotel.oem.OemSettings(),
+    val uploadIntervalSeconds: Int = 0,
+    val backendEnvironment: String = "local",
     val language: String = "en",
     val intervalMs: Long = 2000,
     val durationSeconds: Long = 300,
@@ -45,11 +51,18 @@ data class Settings(
     val verboseUntil: Long = 0,
     val fileLogging: Boolean = true,
 ) {
-    fun valid(): Boolean = language in setOf("en", "ru") && intervalMs in INTERVALS &&
+    fun valid(): Boolean = batterySettings.valid() && selfTelemetry.valid() && selfTelemetry.limitMiB <= storageMiB / 2 &&
+        oem.valid() && uploadIntervalSeconds in 0..86400 && backendEnvironment.matches(Regex("[A-Za-z0-9._-]{1,64}")) && language in setOf("en", "ru") && intervalMs in INTERVALS &&
         durationSeconds in 1..maxDurationSeconds && maxDurationSeconds in 1..604800 &&
-        enabled.isNotEmpty() && retentionDays in 1..90 && storageMiB in 64..4096 &&
+        retentionDays in 1..90 && storageMiB in 64..4096 &&
         queueHours in 1..720 && queueMiB in 1..(storageMiB / 2) && thresholds.valid() &&
         deviceId.matches(Regex("[A-Za-z0-9._:-]{1,128}")) && (!otlpEnabled || validEndpoint(endpoint))
+
+    fun hasCollectors(metrics: Set<CollectorKind> = enabled): Boolean =
+        metrics.any { it != CollectorKind.BATTERY } ||
+        batterySettings.let { it.enabled && (it.current || it.wear || it.passport) } ||
+        selfTelemetry.let { it.enabled && it.groups.isNotEmpty() } ||
+        oem.let { it.enabled && it.categories.any { c -> c != com.ahwotel.oem.OemCategory.BATTERY } }
 
     companion object {
         val INTERVALS = listOf(1000L, 2000L, 5000L, 10000L, 30000L, 60000L)
@@ -63,9 +76,9 @@ data class Settings(
 
 data class StartRequest(val id: String, val continuous: Boolean, val durationSeconds: Long,
     val intervalMs: Long, val metrics: Set<CollectorKind>, val reason: String = "") {
-    fun valid(settings: Settings) = id.matches(Regex("[A-Za-z0-9._:-]{1,128}")) &&
+    fun valid(settings: Settings) = settings.monitoringEnabled && id.matches(Regex("[A-Za-z0-9._:-]{1,128}")) &&
         intervalMs in Settings.INTERVALS && durationSeconds in 1..settings.maxDurationSeconds &&
-        metrics.isNotEmpty() && reason.length <= 256 && reason.none { it.isISOControl() }
+        settings.hasCollectors(metrics) && reason.length <= 256 && reason.none { it.isISOControl() }
 }
 
 /** Uses monotonic time; missing readings break a window instead of implying recovery. */

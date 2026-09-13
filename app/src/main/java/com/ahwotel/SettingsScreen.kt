@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 
 @Composable fun SettingsScreen(app: MonitorApp) {
     val saved by app.settings.collectAsStateWithLifecycle()
+    val managedKeys by app.managed.keys.collectAsStateWithLifecycle()
+    val managedVersion by app.managed.version.collectAsStateWithLifecycle()
+    val managedRejected by app.managed.rejected.collectAsStateWithLifecycle()
     var draft by remember(saved) { mutableStateOf(saved) }
     var interval by remember(saved) { mutableStateOf(saved.intervalMs) }
     var duration by remember(saved) { mutableStateOf(saved.durationSeconds.toString()) }
@@ -32,6 +35,10 @@ import kotlinx.coroutines.launch
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle(stringResource(R.string.settings)) }
+        item {
+            if (managedKeys.isNotEmpty()) Text(stringResource(R.string.oem_managed_hint, managedVersion, managedKeys.sorted().joinToString(", ")))
+            if (managedRejected) Text(stringResource(R.string.oem_managed_rejected), color = MaterialTheme.colorScheme.error)
+        }
         item { Panel(stringResource(R.string.language)) {
             Choice(draft.language, listOf("en" to "English", "ru" to "Русский")) { draft = draft.copy(language = it) }
         } }
@@ -39,12 +46,13 @@ import kotlinx.coroutines.launch
             Toggle(stringResource(R.string.continuous), draft.continuous) { draft = draft.copy(continuous = it) }
             Field(stringResource(R.string.duration), duration) { duration = it }
             Field(stringResource(R.string.maximum_duration), maximum) { maximum = it }
+            Text(stringResource(R.string.session_timing_hint), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.interval))
             Choice(interval, Settings.INTERVALS.map { it to stringResource(R.string.seconds, it / 1000) }) { interval = it }
             Toggle(stringResource(R.string.screen_off), draft.collectScreenOff) { draft = draft.copy(collectScreenOff = it) }
             Text(stringResource(R.string.screen_off_hint), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.wake_hint), style = MaterialTheme.typography.bodySmall)
-            CollectorKind.entries.forEach { kind ->
+            CollectorKind.entries.filter { it != CollectorKind.BATTERY }.forEach { kind ->
                 Toggle(kindTitle(kind), kind in draft.enabled, HelpGroup.valueOf(kind.name)) {
                     draft = draft.copy(enabled = if (it) draft.enabled + kind else draft.enabled - kind)
                 }
@@ -58,6 +66,9 @@ import kotlinx.coroutines.launch
             Field(stringResource(R.string.storage_limit), size) { size = it }
             Text(stringResource(R.string.storage_hint), style = MaterialTheme.typography.bodySmall)
         } }
+        item { BatterySettingsPanel(draft) { draft = it } }
+        item { SelfSettingsPanel(draft) { draft = it } }
+        item { OemSettingsPanel(draft, managedKeys) { draft = it } }
         item { Panel(stringResource(R.string.thresholds)) {
             Text(stringResource(R.string.threshold_hint), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.cpu), cpu) { cpu = it }
@@ -82,7 +93,7 @@ import kotlinx.coroutines.launch
         item { Panel(stringResource(R.string.diagnostics)) {
             Text(stringResource(R.string.debug_level))
             Choice(draft.diagnostic, listOf(DiagnosticLevel.OFF to stringResource(R.string.off),
-                DiagnosticLevel.BASIC to stringResource(R.string.basic), DiagnosticLevel.VERBOSE to stringResource(R.string.verbose))) {
+                DiagnosticLevel.BASIC to stringResource(R.string.basic), DiagnosticLevel.VERBOSE to stringResource(R.string.verbose)), enabled = "debug_mode" !in managedKeys) {
                 draft = draft.copy(diagnostic = it)
             }
             Toggle(stringResource(R.string.file_logging), draft.fileLogging) { draft = draft.copy(fileLogging = it) }
@@ -102,7 +113,11 @@ import kotlinx.coroutines.launch
                             verboseUntil = if (draft.diagnostic == DiagnosticLevel.VERBOSE) System.currentTimeMillis() + 900_000 else 0)
                         app.saveSettings(next)
                         message = "saved"
-                    } catch (e: Exception) { message = if (e.message == "identity_busy") "identity_busy" else "invalid_configuration" }
+                    } catch (e: Exception) { message = when (e.message) {
+                        "identity_busy" -> "identity_busy"
+                        "session_timing_apply_failed" -> "session_timing_apply_failed"
+                        else -> "invalid_configuration"
+                    } }
                     finally { saving = false }
                 }
             }) { Text(stringResource(R.string.save)) }
@@ -110,14 +125,14 @@ import kotlinx.coroutines.launch
     }
 }
 
-@Composable fun Field(label: String, value: String, onChange: (String) -> Unit) {
+@Composable fun Field(label: String, value: String, enabled: Boolean = true, onChange: (String) -> Unit) {
     OutlinedTextField(value = value, onValueChange = onChange, label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(), singleLine = true)
+        modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = enabled)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun <T> Choice(selected: T, choices: List<Pair<T, String>>, onChoose: (T) -> Unit) {
+@Composable fun <T> Choice(selected: T, choices: List<Pair<T, String>>, enabled: Boolean = true, onChoose: (T) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        choices.forEach { (key, label) -> FilterChip(selected == key, { onChoose(key) }, label = { Text(label) }) }
+        choices.forEach { (key, label) -> FilterChip(selected == key, { onChoose(key) }, label = { Text(label) }, enabled = enabled) }
     }
 }

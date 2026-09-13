@@ -4,7 +4,15 @@
 
 Интерфейс: **English по умолчанию**, переключение на **Русский** в Settings → Interface language → Save settings. Язык устройства не меняет первоначальный выбор приложения.
 
-Первая Git-версия — **00.00.00.01**, `versionCode=5`. Она включает исправления 0.2.2: изоляцию инструментальных тестов, видимость × при крупном шрифте и уточнение EN/RU подсказки о частоте HEADROOM. Room остаётся версии 2. Готовая локальная сборка: `artifacts/AHWOTel-00.00.00.01-debug.apk`, SHA-256 рядом в `.apk.sha256`.
+Текущая Git-поставка — **00.00.00.02**, `versionCode=11`, Room **4**. Включает OEM/Knox, графики с осями, исправленный таймер, независимые Battery/Self Telemetry и исправления review. APK собран локально; обновление физического Samsung ожидает восстановления USB-соединения. Состав, проверки и ограничения: [VALIDATION-00.00.00.02.md](docs/VALIDATION-00.00.00.02.md).
+
+Этап **versionCode=7**, Room **3**: переключение непрерывного режима и длительности применяется к работающей сессии. Ограничение времени считается от первоначального старта, включая паузы screen-off; если новый срок уже истёк, сбор завершается сразу. Сохранение других настроек не меняет таймер. APK: [AHWOTel-00.00.00.01-code7-debug.apk](artifacts/AHWOTel-00.00.00.01-code7-debug.apk).
+
+Установка с сохранением данных и фоновые сценарии на Samsung подтверждены: [проверка таймера и выхода](docs/VALIDATION-timer-code7.md).
+
+Этап **versionCode=6** добавил графики с осями времени/значений, 60 дополнительных показателей Android/Knox, инвентарный список, журнал изменений, managed configuration и EN/RU подсказки. OEM по умолчанию выключен; включается в Settings. Контракт и ограничения: [docs/oem-telemetry.md](docs/oem-telemetry.md).
+
+APK этого этапа: [AHWOTel-00.00.00.01-code6-debug.apk](artifacts/AHWOTel-00.00.00.01-code6-debug.apk). Он установлен на тестовый Samsung с сохранением истории и настроек. Проверки и фактическая доступность Knox: [docs/VALIDATION-OEM-code6.md](docs/VALIDATION-OEM-code6.md).
 
 `VERSION` в корне — единственный источник `versionName`, версии в Diagnostics и OTLP. Формат — `XX.YY.ZZ.NN`; Git-поставка отмечается аннотированным тегом `v<VERSION>`. Android `versionCode` увеличивается отдельно для обновления установленного приложения. Предыдущие локальные APK 0.1.0–0.2.2 и отчёты сохраняют свои исходные обозначения.
 
@@ -17,7 +25,8 @@
 ```bash
 export JAVA_HOME=/path/to/jdk-17
 export ANDROID_HOME=/path/to/android-sdk
-./scripts/gradle.sh :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./scripts/gradle.sh :app:testDebugUnitTest :app:assembleDebug
+./scripts/gradle.sh :app:lintDebug
 python3 scripts/check-locales.py
 ./scripts/adb.sh install -r app/build/outputs/apk/debug/app-debug.apk
 ./scripts/adb.sh shell am start -n com.ahwotel/.MainActivity
@@ -35,7 +44,9 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`, debug signing. Это не pro
 4. В History выбрать сессию/период, приблизить график, нажать точку для min/avg/max; экспортировать CSV или JSON.
 5. Diagnostics показывает реальную глубину истории, размер хранения и очередь OTLP.
 
-По умолчанию: сессия 300 секунд, интервал 2 секунды, все collectors, screen-off collection включён, retention 14 дней, лимит 512 MiB. Интервал/collectors/пороги фиксируются на сессию, screen-off поведение применяется после сохранения сразу. Если screen-off collection выключен, сбор приостанавливается и возобновляется при включении экрана; таймер продолжает идти. После reboot/уничтожения процесса мониторинг не возобновляется, предыдущая сессия помечается INTERRUPTED при следующем старте приложения.
+По умолчанию: сессия 300 секунд, интервал 2 секунды, все collectors, screen-off collection включён, retention 14 дней, лимит 512 MiB. Интервал/collectors/пороги фиксируются на сессию; режим, длительность и screen-off поведение применяются после сохранения сразу. Изменение режима и длительности сохраняет ID сессии и её замеры; изменённые поля обновляются в записи сессии и её configuration. Повторное сохранение не начинает отсчёт заново. Если screen-off collection выключен, сбор приостанавливается и возобновляется при включении экрана; таймер продолжает идти. После reboot/уничтожения процесса мониторинг не возобновляется, предыдущая сессия помечается INTERRUPTED при следующем старте приложения.
+
+Выход через «Назад», «Домой» или удаление карточки из недавних приложений не останавливает foreground service. Для остановки используйте Stop в приложении или уведомлении. Это не гарантия против принудительной остановки или ограничений прошивки. Basic журналирует `session_timing_changed`, `session_timer_expired` и `monitoring_task_removed` через существующие stdout/Logcat/JSONL sinks; ошибки применения настроек не выдаются за успешное переключение.
 
 Storage — внутренний файловый раздел данных приложения. CPU — `/proc/stat`, если разрешён OEM/Android. При недоступности показывается UNSUPPORTED, а не CPU процесса агента. Thermal API доступен с API 29, headroom — с API 30 и опрашивается не чаще одного раза в 10 секунд; фактическая частота зависит от интервала сбора. Публичного API для гарантированной system-wide CPU на всём парке нет. Отсутствующие значения остаются null; графики не соединяют разрывы.
 
@@ -130,3 +141,21 @@ python3 scripts/test_instrument.py
 Сценарии — [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md), результаты 0.2.2 — [docs/VALIDATION-0.2.2.md](docs/VALIDATION-0.2.2.md), 0.2.1 — [docs/VALIDATION-0.2.1.md](docs/VALIDATION-0.2.1.md), 0.2.0 — [docs/VALIDATION-0.2.0.md](docs/VALIDATION-0.2.0.md), исходного MVP — [docs/VALIDATION.md](docs/VALIDATION.md). Репозиторий: https://github.com/igorlyapin-max/ahwotel .
 
 Исходное ТЗ: `TZ_Android_Performance_Monitoring.txt`. Production credentials, реальная SOTI compatibility matrix, OEM battery policy, production thresholds и signing остаются отдельным этапом. Legacy не поддержана/не запланирована для Android ниже 8 и исторических форматов конфигурации.
+
+## Battery and Self Telemetry (code 8)
+
+В настройках добавлены отдельные разделы «Батарея» и «Телеметрия приложения». Сбор и отправка имеют независимые интервалы; внешний коллектор использует прежние общий переключатель OTLP и endpoint. По умолчанию история хранится 14 дней, Self Telemetry включается вместе со сбором, отправка остаётся выключенной. На экранах мониторинга и истории доступны новые графики, EN/RU-подсказки и JSON/CSV-экспорт.
+
+Подробные правила измерения, доступности и ограничений: [battery-self-telemetry.md](docs/battery-self-telemetry.md). Проверки и установленная сборка: [VALIDATION-battery-self-code8.md](docs/VALIDATION-battery-self-code8.md).
+
+## Review corrections (code 9)
+
+Исправлены загрузка старых настроек OTLP, срок хранения отложенных пакетов, задержка отправки OEM, расчёты Self Telemetry и разряда батареи, effective config hash, полнота длинных графиков, подписи состояний и навигация Back. Старые данные не пересчитываются. Очередь сохраняется до более позднего срока: createdAt + queueHours или dueAt + 1 час; лимит байтов остаётся действующим. Контракт: [battery-self-telemetry.md](docs/battery-self-telemetry.md).
+
+Результаты исправлений и проверки обновления: [VALIDATION-review-code9.md](docs/VALIDATION-review-code9.md).
+
+## Review corrections (code 10)
+
+Исправлены разрастание задач OTLP, восстановление параметров CSV-экспорта после пересоздания Activity, запуск профилей только с Батареей или Телеметрией приложения, учёт первого захвата и границ наблюдения WakeLock. Обновлены русские подсказки. APK собран; проверка и обновление Samsung ожидают восстановления USB-соединения.
+
+Результаты и оставшиеся проверки: [VALIDATION-review-code10.md](docs/VALIDATION-review-code10.md).

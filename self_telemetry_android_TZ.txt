@@ -1,0 +1,439 @@
+ТЕХНИЧЕСКОЕ ЗАДАНИЕ SELF TELEMETRY ANDROID MONITORING AGENT
+
+1.  НАЗНАЧЕНИЕ
+
+Реализовать механизм Self Telemetry внутри Android-приложения
+мониторинга для оценки влияния самого monitoring agent на ресурсы
+устройства.
+
+Self Telemetry должна позволять определять: - нагрузку приложения на
+CPU; - использование памяти; - сетевую активность; - время удержания
+wakelock; - частоту и продолжительность фоновой работы; - активность
+внутренних задач мониторинга; - объём собираемых и отправляемых
+данных; - влияние конфигурации мониторинга на расход батареи; -
+регрессии между версиями приложения; - аномальное поведение агента на
+отдельных моделях устройств и версиях Android.
+
+Система не должна заявлять точное энергопотребление приложения в mAh,
+если оно не измерено напрямую. Battery Impact должен рассчитываться как
+оценочная метрика на основе совокупности технических показателей и
+наблюдаемого изменения разряда батареи устройства.
+
+2.  ЦЕЛИ
+
+3.  Выявлять версии агента, увеличивающие нагрузку на устройство.
+
+4.  Определять наиболее ресурсоёмкие функции мониторинга.
+
+5.  Сравнивать различные sampling-конфигурации.
+
+6.  Оценивать влияние агента на battery drain.
+
+7.  Выявлять excessive wakelocks.
+
+8.  Выявлять повышенную сетевую активность.
+
+9.  Контролировать стоимость сбора telemetry.
+
+10. Контролировать стоимость отправки telemetry.
+
+11. Строить baseline для различных моделей устройств.
+
+12. Автоматически обнаруживать performance regressions после обновления
+    приложения.
+
+13. ОБЩАЯ АРХИТЕКТУРА
+
+Monitoring Agent ├── Device Monitoring └── Self Telemetry ├── Process
+Metrics ├── CPU Metrics ├── Memory Metrics ├── Network Metrics ├──
+WakeLock Metrics ├── Battery Context ├── Task Metrics └── Internal Agent
+Metrics ↓ Local Aggregator ↓ Local Buffer ↓ Batch / Compression ↓
+Backend ↓ Analytics / Alerts
+
+Self Telemetry не должна существенно увеличивать нагрузку самого
+monitoring agent.
+
+4.  ОСНОВНЫЕ ТРЕБОВАНИЯ
+
+После запуска monitoring agent Self Telemetry включается автоматически.
+
+Предусмотреть возможность: - глобального отключения; - удалённого
+изменения sampling interval; - удалённого изменения списка собираемых
+метрик; - изменения уровня детализации; - временного включения debug
+telemetry.
+
+Конфигурация должна управляться backend-системой.
+
+5.  ИДЕНТИФИКАЦИЯ
+
+Каждый telemetry record должен содержать: device_id installation_id
+agent_version agent_build android_version android_sdk
+device_manufacturer device_model device_product timestamp timezone
+config_version
+
+Необходимо избегать хранения персональных идентификаторов пользователя,
+если они не нужны для бизнес-логики системы.
+
+6.  CPU TELEMETRY
+
+Минимальный набор: process_cpu_time_ms process_cpu_delta_ms
+cpu_percent_estimate foreground_cpu_time_ms background_cpu_time_ms
+
+Основные показатели: CPU ms / minute CPU ms / hour
+
+Расчёт: cpu_delta = current_process_cpu_time - previous_process_cpu_time
+
+Дополнительно агрегировать CPU usage по внутренним компонентам:
+collector.cpu_ms uploader.cpu_ms scheduler.cpu_ms database.cpu_ms
+compression.cpu_ms self_telemetry.cpu_ms
+
+Если точное разделение CPU времени невозможно, допускается измерять
+execution duration конкретной операции.
+
+7.  MEMORY TELEMETRY
+
+Собирать: process_memory_rss process_memory_pss java_heap_used
+java_heap_max native_heap_used memory_peak memory_average memory_p95 OOM
+count memory pressure events
+
+При наличии технической возможности: GC count GC duration
+
+8.  NETWORK TELEMETRY
+
+Собирать: network_tx_bytes network_rx_bytes network_tx_bytes_delta
+network_rx_bytes_delta
+
+Разделять по типам операций: telemetry_upload_tx_bytes
+config_download_rx_bytes command_rx_bytes log_upload_tx_bytes
+
+Дополнительно: upload_count upload_success_count upload_failure_count
+upload_retry_count average_payload_size compressed_payload_size
+compression_ratio
+
+При возможности учитывать тип подключения: wifi cellular ethernet other
+
+9.  WAKELOCK TELEMETRY
+
+Собирать: wakelock_acquire_count wakelock_total_duration_ms
+wakelock_max_duration_ms wakelock_average_duration_ms
+
+По каждому wakelock: wakelock_name acquire_count total_duration_ms
+max_duration_ms
+
+Особое внимание: partial wakelock.
+
+Рекомендуемый warning threshold: > 30 sec Critical threshold: > 2 min
+
+Значения должны быть конфигурируемыми.
+
+10. BATTERY CONTEXT
+
+Собирать: battery_level_percent battery_status battery_health
+battery_temperature battery_voltage battery_charge_counter_uah
+battery_current_ua charging charging_source power_save_mode
+
+battery_current_ua и battery_charge_counter_uah относятся ко всему
+устройству, а не только monitoring agent.
+
+11. BATTERY DRAIN
+
+При отсутствии зарядки рассчитывать:
+
+battery_charge_delta_uah = previous_charge_counter_uah -
+current_charge_counter_uah
+
+Производные показатели: device_drain_mah_hour battery_percent_hour
+
+Не рассчитывать battery drain: - во время зарядки; - сразу после
+подключения/отключения зарядки; - при некорректных данных
+BatteryManager; - при отсутствии достаточного временного интервала; -
+при нестабильных значениях charge counter.
+
+12. BATTERY IMPACT AGENT
+
+Backend должен рассчитывать оценочную метрику Agent Battery Impact.
+
+Она не должна интерпретироваться как прямое измерение энергопотребления
+приложения.
+
+Учитывать: CPU usage WakeLock duration Network TX/RX Background runtime
+Wakeups Monitoring jobs count Device battery drain Screen state Network
+type Device state
+
+Результат: Low / Normal / Elevated / High / Critical или score 0–100.
+
+13. MONITORING JOB TELEMETRY
+
+Для каждой операции: collector_name start_timestamp duration_ms success
+error_code samples_collected bytes_generated
+
+Примеры: cpu_collector memory_collector battery_collector
+network_collector location_collector apps_collector
+device_status_collector
+
+14. COLLECTOR COST
+
+Backend должен рассчитывать: CPU cost per collector execution time per
+collector network cost per collector battery correlation per collector
+
+Пример: collector calls/h CPU ms/h avg execution battery 60 300 5 ms cpu
+60 480 8 ms apps 4 2200 550 ms location 12 4800 400 ms
+
+15. SCHEDULER TELEMETRY
+
+Собирать: scheduled_jobs executed_jobs missed_jobs delayed_jobs
+cancelled_jobs
+
+Для каждой задачи: scheduled_at started_at finished_at delay_ms
+duration_ms scheduler_drift_ms
+
+16. BACKGROUND ACTIVITY
+
+Режимы: foreground background foreground_service doze idle
+
+Агрегировать: foreground_time_ms background_time_ms
+foreground_service_time_ms
+
+17. WAKEUPS
+
+При наличии технической возможности: agent_wakeup_count
+scheduled_wakeup_count unexpected_wakeup_count
+
+Основной показатель: wakeups / hour
+
+18. STORAGE / DATABASE TELEMETRY
+
+Собирать: database_size_bytes buffer_size_bytes pending_records
+db_write_count db_read_count db_delete_count db_write_duration_ms
+db_read_duration_ms buffer_overflow_count records_dropped
+
+19. UPLOAD TELEMETRY
+
+Для каждой batch upload операции: batch_id records_count raw_size_bytes
+compressed_size_bytes prepare_duration_ms compression_duration_ms
+upload_duration_ms retry_count network_type success error_code
+
+Backend должен рассчитывать: network bytes per device / hour network
+bytes per device / day uploads / hour records / upload
+
+20. SELF TELEMETRY COST
+
+Собирать: self_telemetry_collection_duration_ms
+self_telemetry_records_generated self_telemetry_bytes_generated
+self_telemetry_upload_bytes self_telemetry_cpu_overhead
+
+Целевое требование: Self Telemetry не должна создавать более 5% общей
+ресурсной нагрузки monitoring agent.
+
+21. SAMPLING
+
+Fast metrics (CPU, Memory, Battery state): 60 sec. Medium metrics
+(Network, Process state, Scheduler statistics): 5 min. Slow metrics
+(Storage, Aggregated collector statistics, System configuration): 15
+min.
+
+22. AGGREGATION
+
+Не отправлять каждый sample отдельно.
+
+На устройстве рассчитывать: min max avg sum count p50 p95
+
+Основное окно: 5 minutes.
+
+Backend: 1 hour 24 hours 7 days
+
+23. РЕКОМЕНДУЕМЫЙ TELEMETRY PACKET
+
+{ “timestamp”: 1789305600000, “device_id”: “…”, “agent_version”:
+“2.8.1”, “system”: { “android_sdk”: 35, “manufacturer”: “Samsung”,
+“model”: “SM-A556B” }, “battery”: { “level”: 78, “charging”: false,
+“charge_counter_uah”: 3842000, “current_ua”: -245000, “temperature”:
+31.2 }, “process”: { “cpu_delta_ms”: 320, “memory_pss_bytes”: 72400000
+}, “network”: { “tx_bytes”: 18342, “rx_bytes”: 4211 }, “wakelock”: {
+“count”: 2, “duration_ms”: 1430 }, “monitoring”: { “samples”: 42,
+“collector_duration_ms”: 180 }, “upload”: { “count”: 1, “bytes”: 12452 }
+}
+
+24. BACKEND AGGREGATION DIMENSIONS
+
+agent_version agent_build manufacturer device_model android_version
+android_sdk monitoring_profile config_version network_type
+
+25. ОСНОВНЫЕ DASHBOARD
+
+Agent Resource Usage: CPU ms/hour Memory P50/P95 Network MB/day WakeLock
+sec/hour Wakeups/hour
+
+Battery Impact: Battery % / hour Battery mAh / hour CPU / hour WakeLock
+/ hour Network / hour
+
+Разрезы: agent version device model Android version
+
+Collector Cost: collector execution count execution duration CPU
+estimate generated bytes error rate
+
+Version Comparison: 2.8.0 2.8.1 Difference CPU 14 s/h 21 s/h +50%
+Network 2.2 MB/d 2.5 MB/d +14% WakeLock 8 s/h 32 s/h +300% Battery drain
+0.7 %/h 0.9 %/h +29%
+
+26. ALERTS
+
+CPU regression: P50 CPU/hour новой версии > предыдущая версия × 1.3
+
+WakeLock regression: wakelock duration/hour > baseline × 1.5
+
+Network regression: network MB/day > baseline × 1.5
+
+Battery regression: battery drain/hour > baseline × 1.2
+
+При условии достаточного количества устройств.
+
+27. BATTERY REGRESSION DETECTION
+
+Определять статистически, а не по одному устройству.
+
+Рекомендуемая минимальная выборка: >= 100 устройств
+
+Сравнивать: same device model same Android version similar monitoring
+config similar device state
+
+Основной показатель: median battery drain
+
+Дополнительно: P75 P90 P95
+
+28. СОСТОЯНИЕ УСТРОЙСТВА
+
+Желательно сохранять: screen_on charging power_save_mode wifi cellular
+doze
+
+29. OVERNIGHT BATTERY TEST
+
+Backend-метрика: Overnight Idle Drain
+
+Условия: screen mostly off not charging device mostly idle minimum
+duration >= 4 hours
+
+Результат: battery_percent/hour mAh/hour agent_cpu/hour wakelock/hour
+network/hour
+
+30. PERFORMANCE BUDGET
+
+Первоначальные продуктовые ориентиры:
+
+CPU: < 1% average background CPU
+
+Memory: < 100 MB typical PSS
+
+WakeLock: < 10 sec/hour preferred
+
+Network: < 5 MB/device/day для стандартного monitoring profile
+
+Uploads: не чаще 1 раза / 5 минут без необходимости
+
+Self Telemetry: < 5% от общего agent overhead
+
+Эти значения не являются универсальными Android-нормативами и должны
+корректироваться по результатам тестирования.
+
+31. REMOTE CONFIGURATION
+
+Backend должен иметь возможность менять: self_telemetry_enabled
+sampling_interval_cpu sampling_interval_memory sampling_interval_battery
+sampling_interval_network upload_interval aggregation_window
+debug_telemetry_enabled
+
+Конфигурация: config_version valid_from
+
+32. DEBUG MODE
+
+Предусмотреть расширенный режим диагностики с автоматическим возвратом к
+стандартной конфигурации.
+
+Пример: debug telemetry = 15 min
+
+Повышенная частота: CPU 10 sec Memory 10 sec Battery 10 sec
+
+Постоянное использование debug mode не допускается.
+
+33. OFFLINE РЕЖИМ
+
+При отсутствии сети: 1. данные агрегируются локально; 2. сохраняются в
+local buffer; 3. storage не должен бесконтрольно расти; 4. при
+заполнении buffer старые данные удаляются согласно retention policy.
+
+Рекомендуемый maximum buffer: 10–50 MB. Точное значение задаётся
+конфигурацией.
+
+34. UPLOAD POLICY
+
+Предпочтительно: collection → aggregate → compress → batch → upload
+
+Избегать: sample → immediate HTTP request
+
+Upload по возможности объединять с основным telemetry upload приложения.
+
+35. ЗАЩИТА ОТ SELF TELEMETRY LOOP
+
+Self Telemetry операции должны иметь специальный internal flag и не
+создавать рекурсивных events.
+
+36. ERROR TELEMETRY
+
+Собирать: collector_error storage_error serialization_error
+compression_error upload_error invalid_metric unsupported_metric
+
+Предотвращать бесконечный цикл логирования ошибок.
+
+37. PRIVACY
+
+Self Telemetry не должна содержать: user messages file contents URL
+content passwords authentication tokens personal application data
+
+Перед отправкой должна выполняться schema validation.
+
+38. ACCEPTANCE CRITERIA
+
+Self Telemetry считается реализованной, если: 1. Monitoring agent
+собирает CPU telemetry. 2. Собирает memory telemetry. 3. Собирает
+network telemetry. 4. Контролирует wakelock. 5. Сохраняет battery
+context. 6. Измеряет стоимость каждого collector. 7. Данные агрегируются
+локально. 8. Данные отправляются batch-ами. 9. Self Telemetry работает
+offline. 10. Sampling управляется удалённо. 11. Возможно сравнение
+версий агента. 12. Backend показывает resource usage по моделям
+устройств. 13. Backend позволяет обнаруживать regression. 14. Self
+Telemetry overhead измеряется самой системой. 15. Self Telemetry не
+вызывает рекурсивную генерацию telemetry.
+
+39. KPI
+
+Agent CPU ms / device / hour Agent WakeLock sec / device / hour Agent
+Network MB / device / day Agent Memory P50 / P95 Agent Battery Impact
+Overnight Battery Drain Collector Cost Upload Cost Self Telemetry
+Overhead
+
+40. ПРИОРИТЕТ РЕАЛИЗАЦИИ
+
+P0: CPU Memory Network Battery context WakeLock Collector execution
+duration Upload telemetry Agent version Device model Local aggregation
+Backend aggregation Version comparison
+
+P1: Battery Impact Score Overnight Battery Drain Collector Cost
+dashboard Regression alerts Remote sampling configuration
+
+P2: automatic anomaly detection device-specific baselines battery
+regression model dynamic sampling automatic collector throttling
+
+41. КОНЕЧНЫЙ РЕЗУЛЬТАТ
+
+После реализации система должна позволять ответить: - Сколько CPU
+потребляет monitoring agent? - Сколько памяти он занимает? - Сколько
+сетевого трафика создаёт? - Сколько времени удерживает wakelock? - Какой
+collector наиболее дорогой? - Как изменилось потребление ресурсов после
+новой версии? - Какие модели устройств испытывают повышенную нагрузку? -
+Влияет ли изменение sampling interval на battery drain? - Насколько
+monitoring agent увеличивает overnight drain? - Какую нагрузку создаёт
+сама Self Telemetry?
+
+Главный результат — возможность количественно оценивать стоимость работы
+monitoring agent и быстро обнаруживать regressions до того, как они
+станут массовой проблемой на устройствах пользователей.

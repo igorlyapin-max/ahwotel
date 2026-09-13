@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Full current-user inventory is an explicit feature of this locally distributed enterprise APK. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="com.samsung.android.knox.permission.KNOX_APP_MGMT" />
+    <queries><package android:name="com.samsung.android.knox.kpu" /></queries>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -10,13 +15,16 @@
         android:icon="@drawable/ic_monitor" android:allowBackup="false"
         android:usesCleartextTraffic="false" android:supportsRtl="true"
         android:theme="@style/Theme.AHWOTel" android:localeConfig="@xml/locales_config">
+        <uses-library android:name="com.samsung.android.knox.knoxsdk" android:required="false" />
+        <meta-data android:name="android.content.APP_RESTRICTIONS" android:resource="@xml/app_restrictions" />
+        <meta-data android:name="com.samsung.android.knox.license.support.selectivePermissions" android:value="true" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name=".MonitoringService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service android:name=".MonitoringService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started device performance diagnostics with visible stop control" />
         </service>

@@ -13,6 +13,9 @@ class IsolatedTestProfile(private val app: MonitorApp) {
 
     suspend fun prepare() {
         check(app.packageName == "com.ahwotel.acceptance") { "unsafe_test_profile" }
+        androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).apply {
+            wakeUp(); executeShellCommand("wm dismiss-keyguard")
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             val output = InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).executeShellCommand(

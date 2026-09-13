@@ -58,7 +58,11 @@
     <string name="saved">Settings saved</string>
     <string name="invalid_configuration">Check values, thresholds and the HTTPS endpoint.</string>
     <string name="identity_busy">Stop monitoring and drain or disable the export queue before changing device identity.</string>
-    <string name="session_snapshot">Interval, collectors and thresholds apply to the next session. Screen-off behavior applies immediately.</string>
+    <string name="session_snapshot">Interval, collectors and thresholds apply to the next session. After saving, continuous mode, duration and screen-off behavior apply to the active session.</string>
+    <string name="session_timing_hint">After saving, the mode and duration also apply to the current session. A time limit is always counted from the original session start, including screen-off pauses. Turning off continuous mode or shortening the duration stops collection immediately if that limit has already elapsed.</string>
+    <string name="background_collection_hint">Leaving with Back or Home, or removing the app from recent apps, keeps collection running in the notification service. Use Stop here or in the notification. Force-stop, process termination or a reboot ends collection; it does not restart automatically. Device restrictions may interrupt background collection.</string>
+    <string name="session_starting">Starting collection…</string>
+    <string name="session_timing_apply_failed">Could not apply the session timing. Check diagnostics and retry; the timing change was not confirmed.</string>
     <string name="otlp">OTLP export</string>
     <string name="otlp_hint">Optional · off by default. MVP sends without authentication. Use a trusted test endpoint. Server TLS validation is required.</string>
     <string name="endpoint">HTTPS endpoint ending in /v1/metrics</string>

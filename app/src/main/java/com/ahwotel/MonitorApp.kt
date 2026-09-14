@@ -82,6 +82,7 @@ class MonitorApp : Application() {
                 if (!initial.otlpEnabled) db.dao().clearOutbox()
                 oem.restore()
                 logs.event("agent_started")
+                if (config.endpointRecovered.first()) logs.event("otlp_disabled_invalid_stored_port", error = true)
                 logs.event("diagnostic_enabled", diagnostic = true)
                 uploads.recover()
                 ready.complete(Unit)
@@ -147,8 +148,9 @@ class MonitorApp : Application() {
         sources.record(results)
     }
 
-    suspend fun saveSettings(next: Settings) = withContext(Dispatchers.IO) {
+    suspend fun saveSettings(requested: Settings) = withContext(Dispatchers.IO) {
         ready.await()
+        val next = requested.withHttpAllowed(requested.allowHttp)
         val previousEndpoint = settings.value.endpoint
         if (!next.otlpEnabled || next.endpoint != previousEndpoint) sender.cancel()
         exportGate.withLock { mutex.withLock {
@@ -321,7 +323,9 @@ class OtlpUploadWorker(context: android.content.Context, params: WorkerParameter
                     app.db.dao().readyPending(System.currentTimeMillis())
                 } ?: run { exhausted = true; return@repeat }
                 val began = android.os.SystemClock.elapsedRealtime()
-                val code = try { app.sender.send(row) } catch (_: Exception) { 0 }
+                val code = try { app.sender.send(row, app.settings.value.allowHttp) }
+                    catch (_: HttpPolicyException) { app.logs.event("otlp_http_not_allowed", error = true); 460 }
+                    catch (_: Exception) { 0 }
                 app.costs.add(AgentMetric.UPLOADS, 1.0, row.stream)
                 if (row.stream == "self") app.costs.add(AgentMetric.SELF_UPLOAD, row.payload.size.toDouble())
                 app.costs.add(if (code in 200..298) AgentMetric.UPLOAD_OK else AgentMetric.UPLOAD_FAIL, 1.0, row.stream)
@@ -333,7 +337,8 @@ class OtlpUploadWorker(context: android.content.Context, params: WorkerParameter
                         code in 200..298 -> app.db.dao().deletePending(row.id)
                         code == 299 -> { app.logs.event("otlp_partial_success", error = true); app.db.dao().deletePending(row.id) }
                         code in 400..499 && code !in listOf(408, 429) -> {
-                            app.logs.event(if (code in listOf(401, 403)) "otlp_auth_rejected" else "otlp_request_rejected", error = true, number = code.toLong())
+                            app.logs.event(when(code) { 461 -> "otlp_response_invalid"; 460 -> "otlp_http_not_allowed"
+                                401,403 -> "otlp_auth_rejected"; else -> "otlp_request_rejected" }, error = true, number = code.toLong())
                             app.db.dao().deletePending(row.id)
                         }
                         else -> {

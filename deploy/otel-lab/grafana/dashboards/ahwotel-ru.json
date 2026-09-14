@@ -1,0 +1,2000 @@
+{
+  "uid": "ahwotel-ru",
+  "title": "AHWOTel · Русский",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "AHWOTel",
+    "ru"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Устройство",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "ahwotel-prometheus"
+        },
+        "query": "label_values({job=\"ahwotel\"},device_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "session",
+        "label": "Сессия",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "ahwotel-prometheus"
+        },
+        "query": "label_values({job=\"ahwotel\",device_id=~\"$device\"},monitoring_session_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Ресурсы устройства",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Доступная RAM",
+      "description": "RAM, которую Android в данный момент считает доступной для новой работы.\n\nЕдиницы: Байты, отображаемые как MiB или GiB; поле availMem читается при каждом сборе.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-1)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-1",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_memory_available_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Свободное хранилище",
+      "description": "Свободное место, доступное обычным приложениям на файловой системе с данными AHWOTel.\n\nЕдиницы: Байты, отображаемые как MiB или GiB; читается StatFs.availableBytes.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-2)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-2",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_storage_available_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Нет наблюдений",
+          "decimals": 4,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Ожидание CPU пробой",
+      "description": "Время, когда отдельный поток пробы был готов выполняться, но ожидал CPU в очереди планировщика между двумя пробами.\n\nЕдиницы: Миллисекунды, накопленные за измеренный интервал\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-3)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-3",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_runqueue_wait_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Задержка запуска пробы",
+      "description": "Насколько позже запланированного момента поток пробы фактически начал выполнение.\n\nЕдиницы: Миллисекунды опоздания каждой пробы по монотонным часам активности устройства\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-4)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-4",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_scheduling_delay_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "CPU системы, если доступен",
+      "description": "Доля суммарного времени CPU, занятого работой на устройстве за интервал между двумя замерами.\n\nЕдиницы: Проценты, 0–100\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-5)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-5",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_cpu_utilization_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Тепловой статус",
+      "description": "Статус тепловых ограничений Android для устройства, а не температура в градусах.\n\nЕдиницы: Коды: 0 — нет ограничений, 1 — лёгкие, 2 — умеренные, 3 — сильные, 4 —…\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-6)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-6",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_thermal_status_ratio{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Батарея",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Заряд батареи",
+      "description": "Что измеряется\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-7)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-7",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_battery_level_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Нет наблюдений",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Температура батареи",
+      "description": "Что измеряется\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-8)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-8",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_battery_temperature_celsius{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "celsius",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Наблюдения состояния и износа батареи",
+      "description": "Последнее наблюдение за выбранный период; время наблюдения указано ниже. Единицы: SOH %, число циклов, ёмкость мкА·ч. Недоступные значения отсутствуют.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-9)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-9",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time({__name__=~\"device_battery_(soh_percent|cycle_count_ratio|full_charge_capacity_uAh|design_capacity_uAh)\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range])",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Значение"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Статус"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Область измерения"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Качество"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Компонент"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Устройство"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Сессия"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Мониторинг мониторинга",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Оценка CPU агента",
+      "description": "Что измеряется\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-10)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-10",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Память PSS агента",
+      "description": "Что измеряется\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-11)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-11",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_memory_pss_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "CPU агента за окно",
+      "description": "Что измеряется\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-12)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-12",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_delta_sum_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Результаты отправки за окно",
+      "description": "Агрегаты за окно передаются как gauge, а не накопительные счётчики. rate() не применяется.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-13)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-13",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{__name__=~\"agent_upload_(success|failure|retry)_sum_ratio\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{__name__}} · {{component}} · {{monitoring_session_id}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Доступность и OEM",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Battery / Self: последнее наблюдение и статус",
+      "description": "Значение — время последнего наблюдения каждого источника в диапазоне (начало периода, конец периода]. Android и Knox показаны отдельно. Метки содержат статус,…\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-14)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-14",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * topk by (device_id,monitoring_session_id,metric,component,source,measurement_scope) (1, ts_of_last_over_time(agent_telemetry_availability{device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range]))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "dateTimeAsIso",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Время наблюдения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Статус"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Область измерения"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Качество"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Компонент"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Устройство"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Сессия"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "table",
+      "title": "OEM: последнее наблюдение и статус",
+      "description": "Значение — время последнего наблюдения каждого источника в диапазоне (начало периода, конец периода]. Android и Knox показаны отдельно. Метки содержат статус,…\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-15)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-15",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * topk by (device_id,monitoring_session_id,metric,component,source,measurement_scope) (1, ts_of_last_over_time(agent_oem_capability{device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range]))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "dateTimeAsIso",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Время наблюдения"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Показатель"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Статус"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Причина"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Источник"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Область измерения"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Качество"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Компонент"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Устройство"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Сессия"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "OEM: память агента",
+      "description": "PSS процесса из указанного источника. Сравнивайте одно устройство и профиль. Это не свободная RAM устройства.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-16)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-16",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_oem_agent_memory_pss_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Поддержка базовых сборщиков",
+      "description": "1: доступен или прогревается; 0: явно не поддерживается. Отсутствие наблюдений остаётся отсутствием данных.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-17)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-17",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{__name__=~\"device_.*_supported\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{__name__}} · {{component}} · {{monitoring_session_id}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Доставка телеметрии",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Очередь Collector",
+      "description": "Принятые запросы, ожидающие экспорта. Устойчивый рост указывает на задержку доставки.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-18)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-18",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "otelcol_exporter_queue_size",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Ошибки экспорта Collector",
+      "description": "Скорость роста счётчика Collector, не оконный gauge APK. Проверьте очередь и готовность Prometheus.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-19)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-19",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(otelcol_exporter_send_failed_metric_points[5m])",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ops",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Доступность Collector / Prometheus",
+      "description": "Только успешность scrape; сквозная доставка подтверждается данными устройства и опустошением очереди.\n\n[Подробнее](/d/ahwotel-help-ru?viewPanel=panel-20)",
+      "links": [
+        {
+          "title": "Подробнее",
+          "url": "/d/ahwotel-help-ru?viewPanel=panel-20",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=~\"collector|prometheus\"}",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Нет наблюдений",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "English",
+      "type": "link",
+      "url": "/d/ahwotel-en",
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

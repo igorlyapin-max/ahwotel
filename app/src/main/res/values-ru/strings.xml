@@ -1,4 +1,5 @@
 <resources>
+    <string name="otlp_port_recovered">Экспорт OTLP отключён: сохранённый адрес содержит некорректный порт. Локальный сбор доступен. Исправьте адрес и включите экспорт, когда будете готовы.</string>
     <string name="app_name">AHWOTel</string>
     <string name="monitoring">Мониторинг</string>
     <string name="history">История</string>
@@ -56,7 +57,7 @@
     <string name="storage_hint">Старейшие замеры удаляются при достижении срока или лимита места.</string>
     <string name="save">Сохранить настройки</string>
     <string name="saved">Настройки сохранены</string>
-    <string name="invalid_configuration">Проверьте значения, пороги и HTTPS endpoint.</string>
+    <string name="invalid_configuration">Проверьте значения, пороги, endpoint и разрешение HTTP.</string>
     <string name="identity_busy">Перед сменой идентификатора остановите сбор и отправьте либо отключите очередь экспорта.</string>
     <string name="session_snapshot">Интервал, источники и пороги применяются к новой сессии. После сохранения непрерывный режим, длительность и поведение при выключенном экране применяются к текущей сессии.</string>
     <string name="session_timing_hint">После сохранения режим и длительность меняются и у текущей сессии. Ограничение времени всегда считается от её первоначального начала, включая паузы при выключенном экране. Отключение непрерывного режима или сокращение длительности сразу остановит сбор, если этот срок уже истёк.</string>
@@ -64,8 +65,11 @@
     <string name="session_starting">Запуск сбора…</string>
     <string name="session_timing_apply_failed">Не удалось применить настройки таймера сессии. Проверьте диагностику и повторите сохранение; изменение таймера не подтверждено.</string>
     <string name="otlp">Экспорт OTLP</string>
-    <string name="otlp_hint">Необязательно · по умолчанию выключено. MVP отправляет без аутентификации. Используйте доверенный тестовый endpoint. Сертификат сервера проверяется.</string>
-    <string name="endpoint">HTTPS endpoint, оканчивающийся на /v1/metrics</string>
+    <string name="otlp_hint">Необязательно · по умолчанию выключено. Отправляет собранные измерения коллектору. Смена endpoint или выключение OTLP очищает очередь отправки; локальная история измерений сохраняется. Доставка начинается с новых измерений.</string>
+    <string name="endpoint">Endpoint коллектора, оканчивающийся на /v1/metrics</string>
+    <string name="otlp_auth_none">Аутентификация: None. HTTPS проверяет сертификат сервера.</string>
+    <string name="otlp_allow_http">Разрешить HTTP для тестового стенда</string>
+    <string name="otlp_http_help">По умолчанию выключено: разрешён только HTTPS. Включите для доверенного локального стенда без сертификатов. HTTP не шифрует измерения и не проверяет отправителя. Пример: http://192.168.1.10:4318/v1/metrics — укажите адрес компьютера, доступный телефону. Выключение для HTTP endpoint также выключает OTLP и очищает очередь отправки. Каждый повтор проверяет это разрешение; HTTPS автоматически на HTTP не переключается.</string>
     <string name="queue_hours">Срок очереди экспорта, часы</string>
     <string name="queue_mib">Лимит очереди экспорта, MiB</string>
     <string name="soti">Команды SOTI</string>

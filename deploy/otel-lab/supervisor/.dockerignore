@@ -1,0 +1,7 @@
+# Only supervisor sources belong in this build context.
+*
+!Dockerfile
+!.dockerignore
+!go.mod
+!main.go
+!main_test.go

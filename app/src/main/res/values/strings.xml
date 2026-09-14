@@ -1,4 +1,5 @@
 <resources>
+    <string name="otlp_port_recovered">OTLP export was disabled because the saved endpoint has an invalid port. Local monitoring remains available. Correct the endpoint and enable export when ready.</string>
     <string name="app_name">AHWOTel</string>
     <string name="monitoring">Monitor</string>
     <string name="history">History</string>
@@ -56,7 +57,7 @@
     <string name="storage_hint">Oldest readings are removed when either limit is reached.</string>
     <string name="save">Save settings</string>
     <string name="saved">Settings saved</string>
-    <string name="invalid_configuration">Check values, thresholds and the HTTPS endpoint.</string>
+    <string name="invalid_configuration">Check values, thresholds, endpoint and the HTTP permission.</string>
     <string name="identity_busy">Stop monitoring and drain or disable the export queue before changing device identity.</string>
     <string name="session_snapshot">Interval, collectors and thresholds apply to the next session. After saving, continuous mode, duration and screen-off behavior apply to the active session.</string>
     <string name="session_timing_hint">After saving, the mode and duration also apply to the current session. A time limit is always counted from the original session start, including screen-off pauses. Turning off continuous mode or shortening the duration stops collection immediately if that limit has already elapsed.</string>
@@ -64,8 +65,11 @@
     <string name="session_starting">Starting collection…</string>
     <string name="session_timing_apply_failed">Could not apply the session timing. Check diagnostics and retry; the timing change was not confirmed.</string>
     <string name="otlp">OTLP export</string>
-    <string name="otlp_hint">Optional · off by default. MVP sends without authentication. Use a trusted test endpoint. Server TLS validation is required.</string>
-    <string name="endpoint">HTTPS endpoint ending in /v1/metrics</string>
+    <string name="otlp_hint">Optional · off by default. Sends collected measurements to a collector. Changing the endpoint or disabling OTLP clears the pending upload queue; local measurement history is retained. Delivery starts with new measurements.</string>
+    <string name="endpoint">Collector endpoint ending in /v1/metrics</string>
+    <string name="otlp_auth_none">Authentication: None. HTTPS verifies the server certificate.</string>
+    <string name="otlp_allow_http">Allow HTTP for a test lab</string>
+    <string name="otlp_http_help">Off by default: only HTTPS is allowed. Enable for a trusted local lab without certificates. HTTP does not encrypt measurements or authenticate the sender. Example: http://192.168.1.10:4318/v1/metrics — use the computer address reachable from the phone. Turning this off for an HTTP endpoint also disables OTLP and clears pending uploads. Every retry checks this permission; HTTPS never falls back to HTTP.</string>
     <string name="queue_hours">Export queue age, hours</string>
     <string name="queue_mib">Export queue limit, MiB</string>
     <string name="soti">SOTI commands</string>

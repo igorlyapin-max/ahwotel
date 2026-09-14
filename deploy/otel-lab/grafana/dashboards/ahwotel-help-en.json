@@ -1,0 +1,460 @@
+{
+  "uid": "ahwotel-help-en",
+  "title": "AHWOTel · Help",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "AHWOTel",
+    "en"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Available RAM",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nRAM that Android currently considers available for new work.\n\n### Units\n\nBytes, shown as MiB or GiB; sampled from availMem at each collection.\n\n### Impact\n\nA sustained decline can reduce room for new allocations and accompany reclamation, application restarts or delayed work.\n\n### Interpretation\n\nCompare with total RAM, available percentage and the low-memory flag. A decrease after starting apps can be normal; a repeating decline deserves investigation.\n\n### Example\n\n128 MiB available on a 1024 MiB device equals 12.5%; the same 128 MiB on a larger device is a smaller fraction.\n\n### Limitations\n\nThis is not simply unused physical memory and not the free heap of one app. Android manages caches; this value alone neither proves a leak nor guarantees an allocation will succeed.\n\n### Performance State\n\nUsed to calculate available memory percentage. Memory pressure also considers the Android low-memory flag.\n\n### Source\n\nDevice memory: ActivityManager.getMemoryInfo(), MemoryInfo.availMem."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "text",
+      "title": "Free storage",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nFree space that ordinary applications can use on the filesystem containing AHWOTel data.\n\n### Units\n\nBytes, displayed as MiB or GiB; sampled from StatFs.availableBytes.\n\n### Impact\n\nA small reserve can prevent writes, downloads or database growth and affect applications sharing the partition.\n\n### Interpretation\n\nWatch sustained decreases and compare with total capacity and available percentage. An increase can follow cleanup by any app.\n\n### Example\n\n2 GiB available on a 16 GiB filesystem gives 12.5% remaining capacity.\n\n### Limitations\n\nFilesystem reserves are excluded. This is not the app history quota and does not guarantee that every write succeeds; app or system limits may apply.\n\n### Performance State\n\nUsed to calculate storage available percentage, which feeds storage pressure. AHWOTel history size is reported separately in Diagnostics.\n\n### Source\n\nApp data filesystem: StatFs(context.filesDir), availableBytes."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "text",
+      "title": "Probe CPU wait",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nTime that the dedicated probe thread was ready to execute but waited in the CPU run queue between two probes.\n\n### Units\n\nMilliseconds accumulated over the measured interval. Difference of the thread scheduler wait counters, converted from nanoseconds.\n\n### Impact\n\nAn increase suggests this thread had difficulty getting CPU time. Similar contention may delay application tasks, but other threads can behave differently.\n\n### Interpretation\n\nCompare intervals of similar duration and look for repeated increases together with probe delay. Zero is valid; no universal warning threshold is assigned.\n\n### Example\n\n20 ms over a 2000 ms probe interval means this thread accumulated 20 ms waiting to run. It does not mean the whole device was 1% overloaded.\n\n### Limitations\n\nOnly the agent probe thread is observed. Scheduling policy and other work affect it. A denied or inactive scheduler counter cannot prove absence of contention. Pauses, sleep and resets break the interval.\n\n### Performance State\n\nDoes not affect CPU pressure or the overall performance state. It remains a separate indirect signal even if system CPU is available.\n\n### Source\n\nProbe thread: /proc/self/task/<tid>/schedstat, second counter. Availability is tested inside the APK."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "text",
+      "title": "Probe scheduling delay",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nHow late the probe thread actually starts compared with its scheduled execution time.\n\n### Units\n\nMilliseconds of lateness per probe, measured with monotonic uptime. This is a scheduling delay, not application startup duration.\n\n### Impact\n\nRepeated delays can accompany poor responsiveness when work cannot run on time.\n\n### Interpretation\n\nLook for repeated peaks and compare them with CPU wait and thermal status. Small delays are expected; the value alone does not identify a bottleneck.\n\n### Example\n\nA probe planned for uptime 5000 ms that begins at 5025 ms has a delay of 25 ms.\n\n### Limitations\n\nCPU competition, garbage collection and Android scheduling restrictions can contribute. Deep sleep is excluded by resetting the baseline; unavailable or stale probes are omitted. No universal normal threshold is defined.\n\n### Performance State\n\nDoes not affect CPU pressure or the overall performance state. It can remain available when /proc counters are denied.\n\n### Source\n\nDedicated probe thread and monotonic uptime timer. Each reading uses the probe timestamp rather than the later database write time."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "text",
+      "title": "System CPU, when supported",
+      "gridPos": {
+        "x": 0,
+        "y": 80,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nShare of total CPU time spent busy across the device during the interval between two readings.\n\n### Units\n\nPercent, 0–100. Calculated from changes in /proc/stat counters; idle and I/O wait are excluded from busy time.\n\n### Impact\n\nSustained high utilization can leave less execution time for other tasks, increasing response times and heat.\n\n### Interpretation\n\nCompare sustained load with CPU wait, probe delay and thermal status. A short peak can be normal. A low device average can hide one saturated core.\n\n### Example\n\nAn 80% reading means 80% of the aggregate counted CPU time was busy in this interval; it is not the agent process share.\n\n### Limitations\n\nAndroid may deny /proc/stat. Missing readings remain unavailable. CPU wait and probe delay then provide separate clues; they cannot reconstruct this percentage.\n\n### Performance State\n\nFeeds CPU pressure. Default thresholds are 80%, 90%, 95%, with time windows before changing the severity. Session settings may differ.\n\n### Source\n\nDevice CPU counters: /proc/stat. Two valid readings are needed after start or reset."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "Thermal status",
+      "gridPos": {
+        "x": 0,
+        "y": 100,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Meaning\n\nAndroid thermal throttling status for the device, rather than a temperature in degrees.\n\n### Units\n\nCodes: 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown.\n\n### Impact\n\nHigher levels indicate stronger heat-related restrictions, which can reduce CPU/GPU performance and delay work.\n\n### Interpretation\n\nLook for sustained increases and slower task execution at the same time. The numeric gaps are category steps, not equal temperature differences.\n\n### Example\n\nStatus 3 means Android reports severe throttling. It does not mean 3 degrees or 3% load.\n\n### Limitations\n\nRequires Android API 29 and device support. The manufacturer defines sensor and policy behavior; this does not identify one specific hot component. Compare with headroom and battery temperature.\n\n### Performance State\n\nFeeds thermal pressure. Default boundaries are statuses 1, 2, 3, followed by the configured time windows; Android thermal codes and app severity codes are different scales.\n\n### Source\n\nDevice thermal policy: PowerManager.currentThermalStatus."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "text",
+      "title": "Battery level",
+      "gridPos": {
+        "x": 0,
+        "y": 120,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What it measures\nRemaining charge as a percentage; compare discharge only under similar load.\n\nScope and units\nEntire device battery; %.\n\nImpact\nUse the trend to investigate autonomy and battery condition.\n\nInterpretation\nCompare the same model, Android version, agent build and configuration. Aggregation: GAUGE.\n\nExample\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\n\nLimitations\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\n\nPerformance State\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\n\nSource\ndevice.battery.level. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "text",
+      "title": "Battery temperature",
+      "gridPos": {
+        "x": 0,
+        "y": 140,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What it measures\nHeating can change charging speed and accelerate wear; temperature alone does not measure wear.\n\nScope and units\nEntire device battery; Cel.\n\nImpact\nUse the trend to investigate autonomy and battery condition.\n\nInterpretation\nCompare the same model, Android version, agent build and configuration. Aggregation: GAUGE.\n\nExample\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\n\nLimitations\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\n\nPerformance State\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\n\nSource\ndevice.battery.temperature. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "text",
+      "title": "Battery health / wear observations",
+      "gridPos": {
+        "x": 0,
+        "y": 160,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Last observation in the selected period; see observation time below. Values have different units: SOH %, cycles count, capacity µAh. Unsupported values are absent."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "text",
+      "title": "Agent CPU estimate",
+      "gridPos": {
+        "x": 0,
+        "y": 180,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What it measures\n100 × CPU delta / elapsed time; 100% equals one core, multithreading can exceed 100%.\n\nScope and units\nThis monitoring application; %.\n\nImpact\nUse the trend to investigate agent resource cost and regressions.\n\nInterpretation\nCompare the same model, Android version, agent build and configuration. Aggregation: GAUGE.\n\nExample\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\n\nLimitations\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\n\nPerformance State\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\n\nSource\nagent.cpu.percent. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "Agent PSS",
+      "gridPos": {
+        "x": 0,
+        "y": 200,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What it measures\nPrivate memory plus a proportional share of shared pages; useful for comparing process footprint.\n\nScope and units\nThis monitoring application; By.\n\nImpact\nUse the trend to investigate agent resource cost and regressions.\n\nInterpretation\nCompare the same model, Android version, agent build and configuration. Aggregation: GAUGE.\n\nExample\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\n\nLimitations\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\n\nPerformance State\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\n\nSource\nagent.memory.pss. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "text",
+      "title": "Agent CPU per observation window",
+      "gridPos": {
+        "x": 0,
+        "y": 220,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "What it measures\nCPU time consumed between valid observations; excludes sleep and waiting.\n\nScope and units\nThis monitoring application; ms.\n\nImpact\nUse the trend to investigate agent resource cost and regressions.\n\nInterpretation\nCompare the same model, Android version, agent build and configuration. Aggregation: SUM.\n\nExample\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\n\nLimitations\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\n\nPerformance State\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\n\nSource\nagent.cpu.delta. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "text",
+      "title": "Upload outcomes per window",
+      "gridPos": {
+        "x": 0,
+        "y": 240,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Window aggregates are gauges, not cumulative counters. No rate() is applied."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "text",
+      "title": "Battery / Self: last observation and status",
+      "gridPos": {
+        "x": 0,
+        "y": 260,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Value is the last observation time for each source within (period start, period end]. Android and Knox remain separate. Labels preserve status, reason, scope and quality. UNSUPPORTED is not zero; an old observation is not proof of current availability."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "text",
+      "title": "OEM: last observation and status",
+      "gridPos": {
+        "x": 0,
+        "y": 280,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Value is the last observation time for each source within (period start, period end]. Android and Knox remain separate. Labels preserve status, reason, scope and quality. UNSUPPORTED is not zero; an old observation is not proof of current availability."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "text",
+      "title": "OEM agent memory",
+      "gridPos": {
+        "x": 0,
+        "y": 300,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Process PSS from the reported source. Compare the same device and profile. This is not free device RAM."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "text",
+      "title": "Base collector support",
+      "gridPos": {
+        "x": 0,
+        "y": 320,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "1: available or warming up; 0: explicitly unsupported. Missing observations remain missing."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "text",
+      "title": "Collector queue",
+      "gridPos": {
+        "x": 0,
+        "y": 340,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Accepted requests waiting for export. Sustained growth indicates downstream delivery delay."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "text",
+      "title": "Collector export failures",
+      "gridPos": {
+        "x": 0,
+        "y": 360,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Collector counter rate, not an APK window gauge. Check queue and Prometheus readiness."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "text",
+      "title": "Collector / Prometheus readiness",
+      "gridPos": {
+        "x": 0,
+        "y": 380,
+        "w": 24,
+        "h": 20
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Scrape success only; end-to-end delivery requires device data and a draining queue."
+      },
+      "links": [
+        {
+          "title": "Back to charts",
+          "url": "/d/ahwotel-en",
+          "targetBlank": false
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "Back to charts",
+      "type": "link",
+      "url": "/d/ahwotel-en"
+    }
+  ]
+}

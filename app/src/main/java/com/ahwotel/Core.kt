@@ -42,6 +42,7 @@ data class Settings(
     val storageMiB: Int = 512,
     val thresholds: Thresholds = Thresholds(),
     val otlpEnabled: Boolean = false,
+    val allowHttp: Boolean = false,
     val endpoint: String = "",
     val queueHours: Int = 24,
     val queueMiB: Int = 32,
@@ -56,7 +57,10 @@ data class Settings(
         durationSeconds in 1..maxDurationSeconds && maxDurationSeconds in 1..604800 &&
         retentionDays in 1..90 && storageMiB in 64..4096 &&
         queueHours in 1..720 && queueMiB in 1..(storageMiB / 2) && thresholds.valid() &&
-        deviceId.matches(Regex("[A-Za-z0-9._:-]{1,128}")) && (!otlpEnabled || validEndpoint(endpoint))
+        deviceId.matches(Regex("[A-Za-z0-9._:-]{1,128}")) && (!otlpEnabled || validEndpoint(endpoint, allowHttp))
+
+    fun withHttpAllowed(allowed: Boolean) = copy(allowHttp = allowed,
+        otlpEnabled = otlpEnabled && (allowed || !endpoint.startsWith("http:", ignoreCase = true)))
 
     fun hasCollectors(metrics: Set<CollectorKind> = enabled): Boolean =
         metrics.any { it != CollectorKind.BATTERY } ||
@@ -66,9 +70,10 @@ data class Settings(
 
     companion object {
         val INTERVALS = listOf(1000L, 2000L, 5000L, 10000L, 30000L, 60000L)
-        fun validEndpoint(value: String): Boolean = runCatching {
+        fun validEndpoint(value: String, allowHttp: Boolean = false): Boolean = runCatching {
             val uri = URI(value)
-            uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null &&
+            (uri.scheme == "https" || (allowHttp && uri.scheme == "http")) &&
+                !uri.host.isNullOrBlank() && uri.userInfo == null && (uri.port == -1 || uri.port in 1..65535) &&
                 uri.query == null && uri.fragment == null && uri.path.endsWith("/v1/metrics")
         }.getOrDefault(false)
     }

@@ -1,0 +1,9 @@
+# Explicit host exception: Ubuntu snap Docker rejects exec with no-new-privileges.
+# Verified independently with collector --version. Non-root users and cap_drop remain.
+services:
+  collector:
+    security_opt: !reset []
+  prometheus:
+    security_opt: !reset []
+  grafana:
+    security_opt: !reset []

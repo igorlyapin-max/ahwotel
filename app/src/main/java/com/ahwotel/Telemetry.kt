@@ -77,16 +77,21 @@ class Telemetry(session: SessionRow) : AutoCloseable {
 class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS)
     .followRedirects(false).followSslRedirects(false).build()) {
-    fun send(row: OutboxRow): Int {
-        require(Settings.validEndpoint(row.endpoint))
+    fun send(row: OutboxRow, allowHttp: Boolean = false): Int {
+        if (row.endpoint.startsWith("http:", ignoreCase = true) && !allowHttp) throw HttpPolicyException()
+        require(Settings.validEndpoint(row.endpoint, allowHttp))
         require(row.payload.size <= 1024 * 1024)
         val request = Request.Builder().url(row.endpoint)
             .apply { if (row.compressed) header("Content-Encoding", "gzip") }
             .post(row.payload.toRequestBody("application/x-protobuf".toMediaType())).build()
         return client.newCall(request).execute().use { response ->
-            // A nonempty OTLP response may contain partial_success; do not silently call it success.
-            if (response.isSuccessful && response.body?.source()?.exhausted() == false) 299 else response.code
+            if (!response.isSuccessful) return@use response.code
+            val source = response.body?.source() ?: return@use response.code
+            source.request(OtlpResponse.MAX_BYTES + 1)
+            if (source.buffer.size > OtlpResponse.MAX_BYTES) 461 else OtlpResponse.code(source.readByteArray())
         }
     }
     fun cancel() = client.dispatcher.cancelAll()
 }
+
+class HttpPolicyException : IllegalArgumentException("otlp_http_not_allowed")

@@ -1,0 +1,10 @@
+# Explicit local deployment choice; base compose does not impose a log driver.
+services:
+  collector:
+    logging: &local-logs
+      driver: local
+      options: {max-size: "10m", max-file: "3"}
+  prometheus:
+    logging: *local-logs
+  grafana:
+    logging: *local-logs

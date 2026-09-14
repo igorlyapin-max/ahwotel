@@ -1,0 +1,2000 @@
+{
+  "uid": "ahwotel-en",
+  "title": "AHWOTel · English",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "AHWOTel",
+    "en"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "ahwotel-prometheus"
+        },
+        "query": "label_values({job=\"ahwotel\"},device_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "session",
+        "label": "Session",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "ahwotel-prometheus"
+        },
+        "query": "label_values({job=\"ahwotel\",device_id=~\"$device\"},monitoring_session_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Device resources",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Available RAM",
+      "description": "RAM that Android currently considers available for new work.\n\nUnits: Bytes, shown as MiB or GiB; sampled from availMem at each collection.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-1)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-1",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_memory_available_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Free storage",
+      "description": "Free space that ordinary applications can use on the filesystem containing AHWOTel data.\n\nUnits: Bytes, displayed as MiB or GiB; sampled from StatFs.availableBytes.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-2)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-2",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_storage_available_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No observations",
+          "decimals": 4,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Probe CPU wait",
+      "description": "Time that the dedicated probe thread was ready to execute but waited in the CPU run queue between two probes.\n\nUnits: Milliseconds accumulated over the measured interval\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-3)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-3",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_runqueue_wait_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Probe scheduling delay",
+      "description": "How late the probe thread actually starts compared with its scheduled execution time.\n\nUnits: Milliseconds of lateness per probe, measured with monotonic uptime\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-4)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-4",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_scheduling_delay_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "System CPU, when supported",
+      "description": "Share of total CPU time spent busy across the device during the interval between two readings.\n\nUnits: Percent, 0–100\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-5)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-5",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_cpu_utilization_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Thermal status",
+      "description": "Android thermal throttling status for the device, rather than a temperature in degrees.\n\nUnits: Codes: 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6…\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-6)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-6",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_thermal_status_ratio{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Battery",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Battery level",
+      "description": "What it measures\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-7)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-7",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_battery_level_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "No observations",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Battery temperature",
+      "description": "What it measures\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-8)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-8",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "device_battery_temperature_celsius{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "celsius",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Battery health / wear observations",
+      "description": "Last observation in the selected period; see observation time below. Values have different units: SOH %, cycles count, capacity µAh. Unsupported values are absent.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-9)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-9",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time({__name__=~\"device_battery_(soh_percent|cycle_count_ratio|full_charge_capacity_uAh|design_capacity_uAh)\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range])",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Value"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Status"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Reason"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Measurement scope"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Quality"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Component"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Device"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Session"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Monitoring the monitor",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Agent CPU estimate",
+      "description": "What it measures\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-10)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-10",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_percent{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "percent",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Agent PSS",
+      "description": "What it measures\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-11)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-11",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_memory_pss_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Agent CPU per observation window",
+      "description": "What it measures\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-12)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-12",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_cpu_delta_sum_milliseconds{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ms",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Upload outcomes per window",
+      "description": "Window aggregates are gauges, not cumulative counters. No rate() is applied.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-13)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-13",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{__name__=~\"agent_upload_(success|failure|retry)_sum_ratio\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{__name__}} · {{component}} · {{monitoring_session_id}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Availability and OEM",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 18,
+      "type": "table",
+      "title": "Battery / Self: last observation and status",
+      "description": "Value is the last observation time for each source within (period start, period end]. Android and Knox remain separate. Labels preserve status, reason, scope and…\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-14)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-14",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * topk by (device_id,monitoring_session_id,metric,component,source,measurement_scope) (1, ts_of_last_over_time(agent_telemetry_availability{device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range]))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "dateTimeAsIso",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Observed at"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Status"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Reason"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Measurement scope"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Quality"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Component"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Device"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Session"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "table",
+      "title": "OEM: last observation and status",
+      "description": "Value is the last observation time for each source within (period start, period end]. Android and Knox remain separate. Labels preserve status, reason, scope and…\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-15)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-15",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * topk by (device_id,monitoring_session_id,metric,component,source,measurement_scope) (1, ts_of_last_over_time(agent_oem_capability{device_id=~\"$device\",monitoring_session_id=~\"$session\"}[$__range]))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "dateTimeAsIso",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Observed at"
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "__name__"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Metric"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Status"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Reason"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "source"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Source"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "measurement_scope"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Measurement scope"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "quality"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Quality"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "component"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Component"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "device_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Device"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "monitoring_session_id"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Session"
+              },
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Value",
+                "metric",
+                "__name__",
+                "status",
+                "reason",
+                "source",
+                "measurement_scope",
+                "quality",
+                "component",
+                "device_id",
+                "monitoring_session_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Value": 0,
+              "metric": 1,
+              "__name__": 2,
+              "status": 3,
+              "reason": 4,
+              "source": 5,
+              "measurement_scope": 6,
+              "quality": 7,
+              "component": 8,
+              "device_id": 9,
+              "monitoring_session_id": 10
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "OEM agent memory",
+      "description": "Process PSS from the reported source. Compare the same device and profile. This is not free device RAM.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-16)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-16",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agent_oem_agent_memory_pss_bytes{device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{monitoring_session_id}} · {{component}} {{source}} {{status}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "bytes",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Base collector support",
+      "description": "1: available or warming up; 0: explicitly unsupported. Missing observations remain missing.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-17)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-17",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{__name__=~\"device_.*_supported\",device_id=~\"$device\",monitoring_session_id=~\"$session\"}",
+          "legendFormat": "{{__name__}} · {{component}} · {{monitoring_session_id}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Telemetry pipeline",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Collector queue",
+      "description": "Accepted requests waiting for export. Sustained growth indicates downstream delivery delay.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-18)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-18",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "otelcol_exporter_queue_size",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Collector export failures",
+      "description": "Collector counter rate, not an APK window gauge. Check queue and Prometheus readiness.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-19)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-19",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 85,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(otelcol_exporter_send_failed_metric_points[5m])",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "ops",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Collector / Prometheus readiness",
+      "description": "Scrape success only; end-to-end delivery requires device data and a draining queue.\n\n[Read more](/d/ahwotel-help-en?viewPanel=panel-20)",
+      "links": [
+        {
+          "title": "Read more",
+          "url": "/d/ahwotel-help-en?viewPanel=panel-20",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ahwotel-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=~\"collector|prometheus\"}",
+          "legendFormat": "{{job}} {{exporter}}",
+          "format": "time_series",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No observations",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "spanNulls": false,
+            "axisLabel": "short",
+            "axisWidth": 90,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "showHeader": true
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Русский",
+      "type": "link",
+      "url": "/d/ahwotel-ru",
+      "keepTime": true,
+      "includeVars": true
+    }
+  ]
+}

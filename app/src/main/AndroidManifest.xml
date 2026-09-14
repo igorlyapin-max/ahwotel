@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application android:name=".MonitorApp" android:label="@string/app_name"
         android:icon="@drawable/ic_monitor" android:allowBackup="false"
-        android:usesCleartextTraffic="false" android:supportsRtl="true"
+        android:usesCleartextTraffic="true" android:supportsRtl="true"
         android:theme="@style/Theme.AHWOTel" android:localeConfig="@xml/locales_config">
         <uses-library android:name="com.samsung.android.knox.knoxsdk" android:required="false" />
         <meta-data android:name="android.content.APP_RESTRICTIONS" android:resource="@xml/app_restrictions" />

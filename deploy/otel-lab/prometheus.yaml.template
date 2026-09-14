@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+storage:
+  tsdb:
+    out_of_order_time_window: ${OUT_OF_ORDER_WINDOW}
+otlp:
+  translation_strategy: UnderscoreEscapingWithSuffixes
+  promote_resource_attributes:
+    - device.id
+    - device.manufacturer
+    - device.model
+    - os.version
+    - agent.version
+    - agent.build
+    - deployment.environment.name
+scrape_configs:
+  - job_name: collector
+    static_configs:
+      - targets: [collector:8888]
+  - job_name: prometheus
+    static_configs:
+      - targets: [prometheus:9090]

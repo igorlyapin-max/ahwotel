@@ -3,20 +3,55 @@ package com.ahwotel
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.core.DataMigration
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 
-private val Context.dataStore by preferencesDataStore("settings")
+internal val configurationKey = stringPreferencesKey("configuration")
+internal val endpointRecoveryKey = booleanPreferencesKey("endpoint_port_recovered")
+private val Context.dataStore by preferencesDataStore("settings", produceMigrations = { listOf(EndpointPortMigration) })
+
+/** Recover only the invalid HTTPS ports accepted by code11; never reset unrelated settings. */
+internal object EndpointPortMigration : DataMigration<Preferences> {
+    fun repaired(raw: String?): String? = runCatching {
+        if (raw == null) return null
+        val json = JSONObject(raw)
+        if (!json.getBoolean("otlpEnabled")) return null
+        val uri = URI(json.getString("endpoint"))
+        if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null ||
+            uri.query != null || uri.fragment != null || !uri.path.endsWith("/v1/metrics") ||
+            (uri.port != 0 && uri.port <= 65535)) return null
+        val repaired = json.put("otlpEnabled", false).toString()
+        SettingsCodec.decode(repaired) // The rest of the configuration must still be valid.
+        repaired
+    }.getOrNull()
+
+    override suspend fun shouldMigrate(currentData: Preferences) = repaired(currentData[configurationKey]) != null
+    override suspend fun migrate(currentData: Preferences): Preferences = currentData.toMutablePreferences().apply {
+        repaired(currentData[configurationKey])?.let {
+            this[configurationKey] = it
+            this[endpointRecoveryKey] = true
+        }
+    }
+    override suspend fun cleanUp() = Unit
+}
 
 class SettingsStore(private val context: Context) {
-    private val key = stringPreferencesKey("configuration")
+    private val key = configurationKey
     val changes: Flow<Settings> = context.dataStore.data.map { SettingsCodec.decode(it[key]) }
+    val endpointRecovered: Flow<Boolean> = context.dataStore.data.map { it[endpointRecoveryKey] == true }
     suspend fun save(settings: Settings) {
         require(settings.valid()) { "invalid_configuration" }
-        context.dataStore.edit { it[key] = SettingsCodec.encode(settings) }
+        context.dataStore.edit {
+            it[key] = SettingsCodec.encode(settings)
+            if (Settings.validEndpoint(settings.endpoint, settings.allowHttp)) it.remove(endpointRecoveryKey)
+        }
     }
 }
 
@@ -36,6 +71,7 @@ object SettingsCodec {
         put("enabled", JSONArray(s.enabled.map { it.name }))
         put("retentionDays", s.retentionDays); put("storageMiB", s.storageMiB)
         put("otlpEnabled", s.otlpEnabled); put("endpoint", s.endpoint)
+        put("allowHttp", s.allowHttp)
         put("queueHours", s.queueHours); put("queueMiB", s.queueMiB)
         put("sotiEnabled", s.sotiEnabled); put("deviceId", s.deviceId)
         put("diagnostic", s.diagnostic.name); put("verboseUntil", s.verboseUntil)
@@ -68,6 +104,7 @@ object SettingsCodec {
             enabled = o.getJSONArray("enabled").let { a -> (0 until a.length()).map { CollectorKind.valueOf(a.getString(it)) }.toSet() },
             retentionDays = o.getInt("retentionDays"), storageMiB = o.getInt("storageMiB"),
             otlpEnabled = o.getBoolean("otlpEnabled"), endpoint = o.getString("endpoint"),
+            allowHttp = o.optBoolean("allowHttp", false),
             queueHours = o.getInt("queueHours"), queueMiB = o.getInt("queueMiB"),
             sotiEnabled = o.getBoolean("sotiEnabled"), deviceId = o.getString("deviceId"),
             diagnostic = DiagnosticLevel.valueOf(o.getString("diagnostic")), verboseUntil = o.getLong("verboseUntil"),

@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "snapshot_at": "2026-09-14T05:17:15.178Z",
+  "project": "AHWOTel",
+  "main_thread_id": "01a09908-2838-7602-a809-a180a5baec48",
+  "source_kind": "local Codex session token_count events",
+  "status_line_fields": [
+    "used-tokens",
+    "total-input-tokens",
+    "total-output-tokens"
+  ],
+  "status_line_mapping": {
+    "used-tokens": "total_tokens",
+    "total-input-tokens": "input_tokens",
+    "total-output-tokens": "output_tokens"
+  },
+  "collection_method": "Latest cumulative counter per independent rollout at cutoff; no summing repeated token_count events; first total equals first request; increments match last_token_usage; no resets",
+  "scope": "Main project thread and seven available review-agent rollouts, including presentation work up to snapshot; excludes unlogged preparation in other tools and later work",
+  "main": {
+    "role": "main",
+    "source_file": "rollout-2026-09-13T07-30-43-01a09908-2838-7602-a809-a180a5baec48.jsonl",
+    "first_usage": "2026-09-13T04:31:42.985Z",
+    "snapshot_at": "2026-09-14T05:17:15.178Z",
+    "usage": {
+      "input_tokens": 187957681,
+      "cached_input_tokens": 182512384,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 956023,
+      "reasoning_output_tokens": 395615,
+      "total_tokens": 188913704
+    },
+    "validation": {
+      "counter_resets": 0,
+      "delta_mismatches": 0
+    },
+    "weekly_limit": {
+      "used_percent": 50.0,
+      "window_minutes": 10080,
+      "resets_at": 1789878703
+    },
+    "plan_type": "pro",
+    "message_counts": {
+      "user_messages": 49,
+      "explicit_plan_starts": 10,
+      "review_requests": 3
+    }
+  },
+  "review_agents": [
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T11-45-02-01a099f0-fb33-74d3-96c0-a1ad75b38143.jsonl",
+      "first_usage": "2026-09-13T08:45:14.034Z",
+      "snapshot_at": "2026-09-13T08:47:14.975Z",
+      "usage": {
+        "input_tokens": 621692,
+        "cached_input_tokens": 555904,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3623,
+        "reasoning_output_tokens": 1337,
+        "total_tokens": 625315
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T11-45-12-01a099f1-2489-7f73-8db7-660295e5786d.jsonl",
+      "first_usage": "2026-09-13T08:45:20.381Z",
+      "snapshot_at": "2026-09-13T08:47:25.399Z",
+      "usage": {
+        "input_tokens": 910178,
+        "cached_input_tokens": 811392,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3696,
+        "reasoning_output_tokens": 1435,
+        "total_tokens": 913874
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T11-45-24-01a099f1-5100-72c1-96a5-3c860d1d914b.jsonl",
+      "first_usage": "2026-09-13T08:45:31.883Z",
+      "snapshot_at": "2026-09-13T15:45:24.702Z",
+      "usage": {
+        "input_tokens": 2147710,
+        "cached_input_tokens": 1957632,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 9701,
+        "reasoning_output_tokens": 4099,
+        "total_tokens": 2157411
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T18-41-27-01a09b6e-3972-7f83-8d2a-70cc1428f928.jsonl",
+      "first_usage": "2026-09-13T15:41:37.848Z",
+      "snapshot_at": "2026-09-13T16:58:08.529Z",
+      "usage": {
+        "input_tokens": 3563232,
+        "cached_input_tokens": 3345152,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 14691,
+        "reasoning_output_tokens": 6414,
+        "total_tokens": 3577923
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T18-41-36-01a09b6e-5c49-7533-b5c5-e4dfd8c3be28.jsonl",
+      "first_usage": "2026-09-13T15:41:43.981Z",
+      "snapshot_at": "2026-09-13T15:44:25.280Z",
+      "usage": {
+        "input_tokens": 1633767,
+        "cached_input_tokens": 1554304,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5172,
+        "reasoning_output_tokens": 1664,
+        "total_tokens": 1638939
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T19-53-38-01a09bb0-510a-79b2-8ce9-5776751da212.jsonl",
+      "first_usage": "2026-09-13T16:53:47.288Z",
+      "snapshot_at": "2026-09-13T16:57:38.261Z",
+      "usage": {
+        "input_tokens": 854443,
+        "cached_input_tokens": 768256,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6104,
+        "reasoning_output_tokens": 3551,
+        "total_tokens": 860547
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    },
+    {
+      "role": "review_agent",
+      "source_file": "rollout-2026-09-13T19-53-46-01a09bb0-6ed4-7be3-bf35-fbad99ee03b7.jsonl",
+      "first_usage": "2026-09-13T16:53:56.505Z",
+      "snapshot_at": "2026-09-13T16:58:24.013Z",
+      "usage": {
+        "input_tokens": 1720184,
+        "cached_input_tokens": 1589248,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7832,
+        "reasoning_output_tokens": 4512,
+        "total_tokens": 1728016
+      },
+      "validation": {
+        "counter_resets": 0,
+        "delta_mismatches": 0
+      }
+    }
+  ],
+  "review_agents_total": {
+    "input_tokens": 11451206,
+    "cached_input_tokens": 10581888,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 50819,
+    "reasoning_output_tokens": 23012,
+    "total_tokens": 11502025
+  },
+  "aggregate": {
+    "input_tokens": 199408887,
+    "cached_input_tokens": 193094272,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1006842,
+    "reasoning_output_tokens": 418627,
+    "total_tokens": 200415729
+  },
+  "cached_share_of_input_percent": 96.8333,
+  "uncached_input_tokens": 6314615,
+  "cost_estimate": {
+    "currency": "USD",
+    "monthly_subscription_assumed": 200,
+    "weekly_usage_fraction": 0.5,
+    "annualized_weekly_allocation": 23.08,
+    "four_week_month_allocation": 25,
+    "kind": "Illustrative allocation of fixed subscription; not API pricing or an invoice",
+    "project_attribution": "50 percent attributed to the project per author; observed weekly limit is account-wide"
+  },
+  "human_time": {
+    "source": "Author reply: approximately 1-2 hours of active involvement, excluding agent waiting time",
+    "confirmed_total_range_minutes": [
+      60,
+      120
+    ],
+    "measured": false,
+    "breakdown_kind": "Illustrative allocation, not independently measured or confirmed by stage",
+    "stages": [
+      {
+        "name": "Specifications and clarification",
+        "range_minutes": [
+          20,
+          40
+        ]
+      },
+      {
+        "name": "Plans, review and prioritization",
+        "range_minutes": [
+          20,
+          40
+        ]
+      },
+      {
+        "name": "Next-step approvals and short decisions",
+        "range_minutes": [
+          10,
+          20
+        ]
+      },
+      {
+        "name": "Phone checks, USB/Wi-Fi and feedback",
+        "range_minutes": [
+          10,
+          20
+        ]
+      }
+    ]
+  }
+}

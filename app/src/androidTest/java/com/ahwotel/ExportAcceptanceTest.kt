@@ -58,6 +58,7 @@ class ExportAcceptanceTest {
             provider="android_standard",source="ANDROID_STANDARD",scope="DEVICE",unit="1",number=value,text=null,status="AVAILABLE",reason="NONE",quality="AUTHORITATIVE")
         app.db.oemDao().observations(listOf(row(id,now-1000,27.0),row(id,now-86400000,77.0),row("other-session",now-1000,99.0)))
         recreate("oem")
+        ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(ui.activity.getString(R.string.oem_period_export)))
         ui.onNodeWithText(ui.activity.getString(R.string.oem_period_export)).performScrollTo().performClick()
         ui.onNodeWithText(ui.activity.getString(R.string.all_sessions)).performScrollTo().performClick()
         ui.onNodeWithText(id,substring=true).performScrollTo().performClick()

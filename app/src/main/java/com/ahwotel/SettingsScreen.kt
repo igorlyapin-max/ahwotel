@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 
 @Composable fun SettingsScreen(app: MonitorApp) {
     val saved by app.settings.collectAsStateWithLifecycle()
+    val endpointRecovered by app.config.endpointRecovered.collectAsStateWithLifecycle(initialValue = false)
     val managedKeys by app.managed.keys.collectAsStateWithLifecycle()
     val managedVersion by app.managed.version.collectAsStateWithLifecycle()
     val managedRejected by app.managed.rejected.collectAsStateWithLifecycle()
@@ -35,6 +36,7 @@ import kotlinx.coroutines.launch
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle(stringResource(R.string.settings)) }
+        if (endpointRecovered) item { Text(stringResource(R.string.otlp_port_recovered), color = MaterialTheme.colorScheme.error) }
         item {
             if (managedKeys.isNotEmpty()) Text(stringResource(R.string.oem_managed_hint, managedVersion, managedKeys.sorted().joinToString(", ")))
             if (managedRejected) Text(stringResource(R.string.oem_managed_rejected), color = MaterialTheme.colorScheme.error)
@@ -81,6 +83,9 @@ import kotlinx.coroutines.launch
         item { Panel(stringResource(R.string.otlp)) {
             Toggle(stringResource(R.string.otlp), draft.otlpEnabled) { draft = draft.copy(otlpEnabled = it) }
             Text(stringResource(R.string.otlp_hint), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.otlp_auth_none), style = MaterialTheme.typography.bodySmall)
+            Toggle(stringResource(R.string.otlp_allow_http), draft.allowHttp) { draft = draft.withHttpAllowed(it) }
+            Text(stringResource(R.string.otlp_http_help), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.endpoint), draft.endpoint) { draft = draft.copy(endpoint = it.trim()) }
             Field(stringResource(R.string.queue_hours), queueHours) { queueHours = it }
             Field(stringResource(R.string.queue_mib), queueSize) { queueSize = it }

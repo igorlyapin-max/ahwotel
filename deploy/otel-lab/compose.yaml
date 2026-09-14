@@ -1,0 +1,96 @@
+name: ${LAB_PROJECT_NAME:-ahwotel-lab}
+services:
+  collector:
+    image: ahwotel-lab-collector:code13
+    build:
+      context: ./supervisor
+      args:
+        GO_IMAGE: ${GO_IMAGE:?Use images.env}
+        BASE_IMAGE: ${COLLECTOR_IMAGE:?Use images.env}
+    user: "10001:10001"
+    entrypoint: ["/lab-supervisor", "collector"]
+    tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./.runtime/policy:/etc/ahwotel-policy:ro
+      - ./collector.yaml:/etc/otelcol/config.yaml:ro
+      - collector-queue:/var/lib/otelcol
+    ports:
+      - "${LAB_BIND_ADDRESS:?Set the LAN address}:${OTLP_PORT:-4318}:4318"
+      - "127.0.0.1:${COLLECTOR_HEALTH_PORT:-13133}:13133"
+    restart: unless-stopped
+    stop_grace_period: 15s
+    mem_limit: 256m
+    cpus: 1.0
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  prometheus:
+    image: ahwotel-lab-prometheus:code13
+    build:
+      context: ./supervisor
+      args:
+        GO_IMAGE: ${GO_IMAGE:?Use images.env}
+        BASE_IMAGE: ${PROMETHEUS_IMAGE:?Use images.env}
+    entrypoint: ["/lab-supervisor", "prometheus"]
+    tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${RETENTION_DAYS:-14}d
+      - --storage.tsdb.retention.size=${RETENTION_SIZE:-2GB}
+      - --web.enable-otlp-receiver
+      - --enable-feature=promql-experimental-functions
+      - --log.format=json
+    volumes:
+      - ./.runtime/policy:/etc/ahwotel-policy:ro
+      - ./.runtime/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    restart: unless-stopped
+    stop_grace_period: 15s
+    mem_limit: 768m
+    cpus: 1.0
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  grafana:
+    image: ahwotel-lab-grafana:code13
+    build:
+      context: ./supervisor
+      args:
+        GO_IMAGE: ${GO_IMAGE:?Use images.env}
+        BASE_IMAGE: ${GRAFANA_IMAGE:?Use images.env}
+    entrypoint: ["/lab-supervisor", "grafana"]
+    tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_LOG_MODE: console
+      GF_LOG_CONSOLE_FORMAT: json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/ahwotel-en.json
+    volumes:
+      - ./.runtime/policy:/etc/ahwotel-policy:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["${LAB_BIND_ADDRESS:?Set the LAN address}:${GRAFANA_PORT:-3000}:3000"]
+    restart: unless-stopped
+    stop_grace_period: 15s
+    mem_limit: 384m
+    cpus: 1.0
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+volumes:
+  collector-queue:
+    name: ${LAB_PROJECT_NAME:-ahwotel-lab}-collector-queue
+    external: true
+  prometheus-data:
+  grafana-data:

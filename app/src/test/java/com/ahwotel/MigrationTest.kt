@@ -35,7 +35,7 @@ class MigrationTest {
             old.execSQL("INSERT INTO outbox(createdAt,endpoint,payload,attempts,nextAttempt) VALUES(101,'https://example.org/v1/metrics',X'040506',2,202)")
             old.version = 2
         }
-        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4, MonitorDatabase.MIGRATION_4_5).allowMainThreadQueries().build()
         try {
             assertEquals(1L, db.dao().sampleCount()); assertEquals(0L, db.oemDao().count())
             val row = db.dao().page(0, "v2", 0, 200).single()
@@ -65,7 +65,7 @@ class MigrationTest {
             old.execSQL("INSERT INTO outbox(createdAt,endpoint,payload,attempts,nextAttempt) VALUES(101,'https://example.org/v1/metrics',X'010203',0,0)")
             old.version = 1
         }
-        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_1_2, MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4)
+        val db = Room.databaseBuilder(context, MonitorDatabase::class.java, name).addMigrations(MonitorDatabase.MIGRATION_1_2, MonitorDatabase.MIGRATION_2_3, MonitorDatabase.MIGRATION_3_4, MonitorDatabase.MIGRATION_4_5)
             .allowMainThreadQueries().build()
         try {
                 assertEquals(1L, db.dao().sampleCount())

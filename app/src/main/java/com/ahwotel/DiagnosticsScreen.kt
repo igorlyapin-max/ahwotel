@@ -21,6 +21,9 @@ import java.io.File
     if (oem) { OemScreen(app) { oem = false }; return }
     val stats by app.stats.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
+    val resume by app.db.resumeDao().observe().collectAsStateWithLifecycle(initialValue = null)
+    val resumeBlocked by app.resumeGuard.blocked.collectAsStateWithLifecycle()
+    val resumeIssue by app.resumeGuard.issue.collectAsStateWithLifecycle()
     val reports by app.sources.reports.collectAsStateWithLifecycle()
     val checking by app.checkingSources.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -41,6 +44,30 @@ import java.io.File
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle(stringResource(R.string.diagnostics)) }
+        item { Panel(stringResource(R.string.resume_title)) {
+            Text(stringResource(if (resume?.armed == true && !resumeBlocked) R.string.resume_armed else R.string.resume_unarmed))
+            resumeIssue?.let { Text(stringResource(resumeIssueText(it)), color = MaterialTheme.colorScheme.error) }
+            if (resumeBlocked && resume?.armed == true) Text(stringResource(R.string.resume_change_incomplete))
+            Text(stringResource(R.string.resume_trigger, stringResource(when(resume?.trigger) {
+                "manual" -> R.string.resume_manual
+                "boot" -> R.string.resume_boot
+                "open" -> R.string.resume_open
+                "process" -> R.string.resume_process
+                else -> R.string.resume_none
+            })))
+            Text(stringResource(when(resume?.result) {
+                "started" -> R.string.resume_started
+                "requested" -> R.string.resume_requested
+                "manual_stop" -> R.string.resume_stopped
+                "option_disabled" -> R.string.resume_option_disabled
+                "monitoring_disabled" -> R.string.oem_monitoring_disabled
+                "timed", "timeout" -> R.string.resume_timed
+                "start_failed", "storage_or_collection_failed" -> R.string.resume_failed
+                "resume_blocked" -> R.string.resume_change_incomplete
+                else -> R.string.resume_unarmed
+            }))
+            Text(stringResource(R.string.resume_help), style = MaterialTheme.typography.bodySmall)
+        } }
         item { Button({ oem = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oem_title)) } }
         item { MetricGuideButton() }
         item { Panel(stringResource(R.string.source_availability)) {

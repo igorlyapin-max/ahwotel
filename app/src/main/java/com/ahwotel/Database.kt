@@ -87,8 +87,8 @@ interface MonitorDao {
     @Query("SELECT * FROM sessions WHERE id=:id") suspend fun session(id: String): SessionRow?
     @Query("UPDATE sessions SET continuous=:continuous, durationSeconds=:duration, configuration=:configuration WHERE id=:id AND status='RUNNING'")
     suspend fun updateTiming(id: String, continuous: Boolean, duration: Long, configuration: String): Int
-    @Query("UPDATE sessions SET endedAt=:end, status='FINISHED', endReason=:reason WHERE id=:id AND status='RUNNING'")
-    suspend fun finish(id: String, end: Long, reason: String)
+    @Query("UPDATE sessions SET endedAt=:end, status=:status, endReason=:reason WHERE id=:id AND status='RUNNING'")
+    suspend fun finish(id: String, end: Long, reason: String, status: String = "FINISHED")
     @Query("UPDATE sessions SET status='INTERRUPTED', endReason='process_interrupted', endedAt=COALESCE((SELECT MAX(time) FROM samples WHERE samples.sessionId=sessions.id), startedAt) WHERE status='RUNNING'")
     suspend fun interrupt()
     @Query("SELECT * FROM samples ORDER BY id DESC LIMIT 1") fun latest(): Flow<SampleRow?>
@@ -112,12 +112,18 @@ interface MonitorDao {
     @RawQuery suspend fun chart(query: SupportSQLiteQuery): List<ChartBucket>
 }
 
-@Database(entities = [SessionRow::class, SampleRow::class, OutboxRow::class, OemObservationRow::class, OemProfileRow::class, OemInventoryRow::class, OemEventRow::class, TelemetryRecord::class, TelemetrySchedule::class], version = 4, exportSchema = true)
+@Database(entities = [SessionRow::class, SampleRow::class, OutboxRow::class, OemObservationRow::class, OemProfileRow::class, OemInventoryRow::class, OemEventRow::class, TelemetryRecord::class, TelemetrySchedule::class, ResumeRow::class], version = 5, exportSchema = true)
 abstract class MonitorDatabase : RoomDatabase() {
+    abstract fun resumeDao(): ResumeDao
     abstract fun agentDao(): AgentTelemetryDao
     abstract fun dao(): MonitorDao
     abstract fun oemDao(): OemDao
     companion object {
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS resume_state (id INTEGER NOT NULL PRIMARY KEY, armed INTEGER NOT NULL, configuration TEXT NOT NULL, trigger TEXT NOT NULL, result TEXT NOT NULL)")
+            }
+        }
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 listOf("cpuWait REAL", "probeDelay REAL", "probeTime INTEGER", "probeInterval INTEGER", "probeSegment INTEGER", "sources TEXT")
@@ -150,7 +156,7 @@ abstract class MonitorDatabase : RoomDatabase() {
             }
         }
         fun create(context: Context) = Room.databaseBuilder(context, MonitorDatabase::class.java, "monitor.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).setJournalMode(JournalMode.WRITE_AHEAD_LOGGING).build()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).setJournalMode(JournalMode.WRITE_AHEAD_LOGGING).build()
     }
 }
 

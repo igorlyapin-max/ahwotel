@@ -4,7 +4,7 @@ Collector Contrib 0.160.0 → Prometheus 3.14.0 → Grafana 13.2.1. Базовы
 
 ## Запуск
 
-Нужны Docker Engine, Docker Compose >= 2.24.4 и Python 3.10+. Для начала выделите около 2 GiB свободной RAM и несколько GiB диска. Лимиты контейнеров: Collector 256 MiB, Prometheus 768 MiB, Grafana 384 MiB; это ограничения, а не измеренное потребление.
+Нужны Docker Engine, Docker Compose >= 2.24.4 и Python 3.10+. Текущие лимиты контейнеров: Collector 256 MiB, Prometheus 2 GiB, Grafana 1 GiB — суммарно 3.25 GiB. Предусмотрите также память для Docker/ОС и несколько GiB диска. Это ограничения, а не измеренное потребление; лимиты Prometheus и Grafana настраиваются в `.env`.
 
 Из корня репозитория:
 
@@ -103,3 +103,27 @@ Fixtures создаются сериализаторами APK. Устройст
 `node scripts/check-lab-help.mjs` с теми же `GRAFANA_URL`/`PLAYWRIGHT_MODULE` проверяет CPU/Thermal на EN/RU, desktop 1440×1000 и mobile 390×844: размеры tooltip, восемь разделов выбранного показателя, чтение последнего раздела и переход клавиатурой. Результаты — `artifacts/code13/help/`; каталог можно задать через `LAB_EVIDENCE_DIR`.
 
 Источники: [Prometheus OTLP](https://prometheus.io/docs/guides/opentelemetry/), [Collector OTLP HTTP exporter](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/otlphttpexporter/README.md), [OTLP responses](https://opentelemetry.io/docs/specs/otlp/), [Grafana anonymous access](https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-authentication/anonymous-auth/).
+
+## Recovery code15
+
+`PROMETHEUS_MEMORY_LIMIT=2g` задаёт начальный лимит памяти Prometheus; формат — положительное целое с суффиксом `m` или `g`. Это не гарантия ёмкости для произвольного парка: проверяйте реальные series, RSS и восстановление WAL. `status` показывает memory usage/limit, restart count, image ID и очередь Collector, возвращает ненулевой код при недоступности компонентов, метрик очереди или её заполнении.
+
+Локальный `segment` исключён из backend labels: иначе каждая смена контекста создаёт новые self-telemetry series. Поле сохраняется в Room/экспорте APK; device/session/source/scope и timestamps передаются. Исторические series не удаляются принудительно. Supervisor пишет числовой exit code и сигнал завершившегося процесса через structured stderr; Off/Basic/ограниченный Verbose и Docker local logging overlay сохраняются.
+
+Суточная проверка после восстановления и запуска телефона:
+
+```bash
+python3 scripts/otel_lab_soak.py --device-id DEVICE_ID --hours 24
+```
+
+Скрипт только наблюдает: раз в минуту проверяет runtime identity/restarts, очередь, свежесть RAM-точек (не старше 5 минут) и Grafana. Итог `RUNNING` не равен `PASS`; ошибки и изменение runtime делают результат `FAIL`. Текущий каталог по умолчанию — `artifacts/recovery-code16/soak/`; прежний прогон code15 хранится отдельно. При ином интервале отправки требуется соответствующий отдельный профиль наблюдения; этот gate рассчитан на тестовый Samsung с RAM каждые 2 секунды и upload interval 0.
+
+## Recovery code16
+
+`GRAFANA_MEMORY_LIMIT=1g` заменяет прежние фиксированные 384 MiB. На реальном EN/RU dashboard-прогоне старого лимита оказалось недостаточно: ядро завершило Grafana по cgroup OOM. Значение настраивается в `.env`, допустимый формат — положительное целое с `m` или `g`, как у Prometheus. После смены лимита нужен `up` для применения Compose-конфигурации и новый полный soak; старые наблюдения сохраняются отдельно.
+
+Наблюдатель учитывает пересоздание контейнера с тем же образом и внутренний перезапуск child process при изменении диагностики. Identity: `container_id`, `started_at`, `image_id`, `restarts`, `child_generation`. Supervisor увеличивает generation при каждом успешном запуске child и сохраняет её при обновлении diagnostic status. Отсутствующая generation считается ошибкой; legacy supervisor не принимается как успешно проверенный runtime.
+
+`runtime_status()` сохраняет частично доступные данные и безопасные `errors` без исключения на обычную недоступность компонента. CLI `status` печатает результат и возвращает ошибку; soak сохраняет результат вместе с конкретными причинами, продолжая независимые проверки других endpoint. Structured payload/секреты в диагностику не включаются.
+
+Для нового 24-часового прогона используйте пустой каталог `--output`; по умолчанию это `artifacts/recovery-code16/soak/`. Пересборка/перезапуск сервисов требуют нового прогона с нуля. Регрессии наблюдателя без воздействия на стенд: `python3 scripts/test_otel_lab_soak.py`.

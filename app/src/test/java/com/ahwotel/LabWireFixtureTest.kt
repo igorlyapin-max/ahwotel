@@ -25,7 +25,7 @@ class LabWireFixtureTest {
         val metadata=JSONObject().put("device.id",id).put("device.model","Wire fixture").put("agent.version","test").toString()
         for ((stream,metric) in listOf("battery" to "LEVEL","self" to "CPU_DELTA")) {
             val rows=(0..1).map { i -> TelemetryRecord(sessionId=id,stream=stream,metric=metric,time=now+i*2000,
-                start=now-2000+i*2000,durationMs=2000,segment=0,value=70.0+i,sum=if(stream=="self") 70.0+i else null,
+                start=now-2000+i*2000,durationMs=2000,segment=i * 1000,value=70.0+i,sum=if(stream=="self") 70.0+i else null,
                 count=1,source="fixture",metadata=metadata) }
             dir.resolve("$stream.pb.gz").writeBytes(AgentTelemetryWire.gzip(AgentTelemetryWire.encode(rows)))
         }

@@ -144,6 +144,8 @@ class SessionTimingAcceptanceTest {
             assertEquals(before, app.config.changes.first())
             assertEquals(SessionMode.CONTINUOUS, app.state.value.mode)
             assertTrue(app.db.dao().session(id)!!.continuous)
+            assertTrue(app.resumeGuard.blocked.value)
+            assertTrue(app.config.resumeBlocked.first())
         } finally { app.db.openHelper.writableDatabase.execSQL("DROP TRIGGER reject_test_timing") }
     }
 

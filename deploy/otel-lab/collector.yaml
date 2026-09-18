@@ -29,6 +29,8 @@ processors:
           - set(attributes["stream"], "oem") where scope.name == "com.ahwotel.oem"
           - delete_key(attributes, "window.start")
           - delete_key(attributes, "window.duration_ms")
+          # Local discontinuity counters are unbounded; timestamps and session identity remain.
+          - delete_key(attributes, "segment")
 exporters:
   otlp_http/prometheus:
     metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics

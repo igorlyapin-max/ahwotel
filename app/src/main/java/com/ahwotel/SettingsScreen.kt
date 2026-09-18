@@ -46,6 +46,9 @@ import kotlinx.coroutines.launch
         } }
         item { Panel(stringResource(R.string.sampling)) {
             Toggle(stringResource(R.string.continuous), draft.continuous) { draft = draft.copy(continuous = it) }
+            Toggle(stringResource(R.string.resume_boot), draft.resumeOnBoot) { draft = draft.copy(resumeOnBoot = it) }
+            Toggle(stringResource(R.string.resume_open), draft.resumeOnOpen) { draft = draft.copy(resumeOnOpen = it) }
+            Text(stringResource(R.string.resume_help), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.duration), duration) { duration = it }
             Field(stringResource(R.string.maximum_duration), maximum) { maximum = it }
             Text(stringResource(R.string.session_timing_hint), style = MaterialTheme.typography.bodySmall)

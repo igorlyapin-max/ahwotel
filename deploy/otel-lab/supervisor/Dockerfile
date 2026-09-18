@@ -7,7 +7,7 @@ RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /lab-s
 
 FROM ${BASE_IMAGE}
 ARG BASE_IMAGE
-LABEL org.opencontainers.image.version="code13" \
+LABEL org.opencontainers.image.version="code16" \
       org.opencontainers.image.source="https://github.com/igorlyapin-max/ahwotel" \
       org.opencontainers.image.base.name="${BASE_IMAGE}"
 # Inherit the pinned upstream runtime identity; do not create an interactive user or home.

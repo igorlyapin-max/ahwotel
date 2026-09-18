@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.core.DataMigration
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -15,6 +16,7 @@ import java.net.URI
 
 internal val configurationKey = stringPreferencesKey("configuration")
 internal val endpointRecoveryKey = booleanPreferencesKey("endpoint_port_recovered")
+internal val resumeBlockedKey = booleanPreferencesKey("resume_blocked")
 private val Context.dataStore by preferencesDataStore("settings", produceMigrations = { listOf(EndpointPortMigration) })
 
 /** Recover only the invalid HTTPS ports accepted by code11; never reset unrelated settings. */
@@ -42,14 +44,18 @@ internal object EndpointPortMigration : DataMigration<Preferences> {
     override suspend fun cleanUp() = Unit
 }
 
-class SettingsStore(private val context: Context) {
+class SettingsStore internal constructor(internal val store: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.dataStore)
     private val key = configurationKey
-    val changes: Flow<Settings> = context.dataStore.data.map { SettingsCodec.decode(it[key]) }
-    val endpointRecovered: Flow<Boolean> = context.dataStore.data.map { it[endpointRecoveryKey] == true }
-    suspend fun save(settings: Settings) {
+    val changes: Flow<Settings> = store.data.map { SettingsCodec.decode(it[key]) }
+    val endpointRecovered: Flow<Boolean> = store.data.map { it[endpointRecoveryKey] == true }
+    val resumeBlocked: Flow<Boolean> = store.data.map { it[resumeBlockedKey] != false }
+    suspend fun setResumeBlocked(blocked: Boolean) { store.edit { it[resumeBlockedKey] = blocked } }
+    suspend fun save(settings: Settings, blockResume: Boolean = false) {
         require(settings.valid()) { "invalid_configuration" }
-        context.dataStore.edit {
+        store.edit {
             it[key] = SettingsCodec.encode(settings)
+            if (blockResume) it[resumeBlockedKey] = true
             if (Settings.validEndpoint(settings.endpoint, settings.allowHttp)) it.remove(endpointRecoveryKey)
         }
     }
@@ -67,6 +73,7 @@ object SettingsCodec {
         put("language", s.language); put("intervalMs", s.intervalMs)
         put("durationSeconds", s.durationSeconds); put("maxDurationSeconds", s.maxDurationSeconds)
         put("continuous", s.continuous); put("collectScreenOff", s.collectScreenOff)
+        put("resumeOnBoot", s.resumeOnBoot); put("resumeOnOpen", s.resumeOnOpen)
         put("indirectCpu", s.indirectCpu)
         put("enabled", JSONArray(s.enabled.map { it.name }))
         put("retentionDays", s.retentionDays); put("storageMiB", s.storageMiB)
@@ -100,6 +107,7 @@ object SettingsCodec {
             language = o.getString("language"), intervalMs = o.getLong("intervalMs"),
             durationSeconds = o.getLong("durationSeconds"), maxDurationSeconds = o.getLong("maxDurationSeconds"),
             continuous = o.getBoolean("continuous"), collectScreenOff = o.getBoolean("collectScreenOff"),
+            resumeOnBoot = o.optBoolean("resumeOnBoot", false), resumeOnOpen = o.optBoolean("resumeOnOpen", false),
             indirectCpu = o.optBoolean("indirectCpu", true),
             enabled = o.getJSONArray("enabled").let { a -> (0 until a.length()).map { CollectorKind.valueOf(a.getString(it)) }.toSet() },
             retentionDays = o.getInt("retentionDays"), storageMiB = o.getInt("storageMiB"),

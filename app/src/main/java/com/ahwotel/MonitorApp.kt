@@ -32,6 +32,7 @@ class MonitorApp : Application() {
     val exportGate = Mutex()
     val state = MutableStateFlow(RuntimeState())
     internal var sessionTiming: SessionTiming? = null // guarded by mutex
+    internal var sessionJob: Job? = null // cancellation never depends on a storage write
     internal val timingChanges = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     val settings = MutableStateFlow(Settings())
     private var localSettings = Settings()
@@ -40,6 +41,7 @@ class MonitorApp : Application() {
     val stats = MutableStateFlow(StorageStats())
     lateinit var db: MonitorDatabase
     lateinit var config: SettingsStore
+    val resumeGuard = ResumeGuard({ config }) { code -> logs.event(code, error = true) }
     lateinit var logs: Diagnostics
     lateinit var sources: SourceRegistry
     val sourceCheckGeneration = java.util.concurrent.atomic.AtomicLong(0)
@@ -76,6 +78,7 @@ class MonitorApp : Application() {
                     config.save(initial)
                 }
                 localSettings = initial
+                resumeGuard.restore()
                 managed.refresh()
                 publishSettings(managed.apply(initial))
                 db.dao().interrupt()
@@ -158,33 +161,48 @@ class MonitorApp : Application() {
             require(next.valid()) { "invalid_configuration" }
             if (old.deviceId != next.deviceId && (state.value.sessionId != null || db.dao().outboxCount() > 0))
                 throw IllegalStateException("identity_busy")
-            if (old.endpoint != next.endpoint || !next.otlpEnabled) { sender.cancel(); db.dao().clearOutbox() }
             val local = managed.keepLocalManagedFields(next, localSettings)
             val effective = managed.apply(local)
+            // Apply a safety prohibition even when persistence is unavailable.
+            if (!effective.monitoringEnabled) publishSettings(effective)
+            if (old.endpoint != next.endpoint || !next.otlpEnabled) { sender.cancel(); db.dao().clearOutbox() }
             val timing = sessionTiming
             val updated = timing?.changedSettings(old, effective)
             if (updated != null && updated != timing) {
-                // DataStore and Room are separate stores. Publish runtime only after both succeed;
-                // compensate DataStore on a failed Room commit. Process death interrupts the session.
+                // Commit a durable veto together with settings BEFORE touching Room.
+                // Compensation may restore settings, but must never restore permission to resume.
                 try {
+                    resumeGuard.block(local)
                     db.withTransaction {
                         val row = db.dao().session(updated.sessionId) ?: error("session_missing")
                         val configuration = org.json.JSONObject(row.configuration)
                             .put("continuous", updated.continuous).put("durationSeconds", updated.durationSeconds).toString()
                         check(db.dao().updateTiming(updated.sessionId, updated.continuous, updated.durationSeconds, configuration) == 1)
-                        config.save(local)
+                        val resume = db.resumeDao().get() ?: ResumeRow()
+                        db.resumeDao().put(resume.copy(armed = updated.continuous && effective.monitoringEnabled,
+                            configuration = configuration, result = if (updated.continuous) "started" else "timed"))
                     }
                 } catch (e: Exception) {
                     withContext(NonCancellable) {
                         runCatching { config.save(localSettings) }.onFailure { logs.event("settings_restore_failed", error = true) }
                         logs.event("session_timing_apply_failed", error = true)
+                        resumeGuard.failed("resume_change_incomplete")
                     }
                     if (e is CancellationException) throw e
                     throw IllegalStateException("session_timing_apply_failed", e)
                 }
                 sessionTiming = updated
+                if (updated.continuous && effective.monitoringEnabled) {
+                    // The settings and Room commit succeeded; failure to lift the veto is safe.
+                    runCatching { resumeGuard.allow() }
+                }
+            } else if (old.continuous && !effective.continuous || !effective.monitoringEnabled) {
+                resumeGuard.block(local)
             } else config.save(local)
             localSettings = local
+            if (!effective.monitoringEnabled || (old.continuous && !effective.continuous)) {
+                persistResumeStopLocked(if (!effective.monitoringEnabled) "monitoring_disabled" else "timed")
+            }
             publishSettings(effective)
             if (updated != null && updated != timing) {
                 updateSessionRuntimeLocked(updated.sessionId, state.value.paused, android.os.SystemClock.elapsedRealtime())
@@ -214,14 +232,30 @@ class MonitorApp : Application() {
     internal fun requestSessionStopLocked(id: String, reason: String): Boolean {
         val timing = sessionTiming?.takeIf { it.sessionId == id } ?: return false
         sessionTiming = timing.stopped(reason)
+        resumeGuard.blockInMemory()
+        sessionJob?.cancel()
         timingChanges.trySend(Unit)
         return true
     }
 
-    private fun publishSettings(value: Settings) {
+    internal suspend fun publishSettings(value: Settings) {
         settings.value = value
         logs.settings = value
+        if (!value.monitoringEnabled) {
+            sessionTiming?.let { requestSessionStopLocked(it.sessionId, "monitoring_disabled") }
+            persistResumeStopLocked("monitoring_disabled")
+        }
         configureReceiver(value.sotiEnabled)
+    }
+
+    internal suspend fun persistResumeStopLocked(reason: String) {
+        resumeGuard.blockInMemory()
+        val guardSaved = runCatching { resumeGuard.block() }.isSuccess
+        val rowSaved = runCatching {
+            val row = db.resumeDao().get() ?: ResumeRow()
+            db.resumeDao().put(row.copy(armed = false, result = reason))
+        }.onFailure { resumeGuard.failed("resume_state_write_failed") }.isSuccess
+        if (guardSaved && rowSaved) resumeGuard.issue.value = null
     }
 
     private fun configureReceiver(enabled: Boolean) {

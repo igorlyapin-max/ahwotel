@@ -29,6 +29,9 @@ type status struct {
 	Token     string  `json:"token"`
 	Expires   float64 `json:"expires"`
 	ChildPID  int     `json:"child_pid"`
+	ChildGeneration uint64 `json:"child_generation"`
+	ExitCode  *int    `json:"exit_code,omitempty"`
+	Signal    int     `json:"signal,omitempty"`
 	Error     string  `json:"error,omitempty"`
 	Updated   int64   `json:"updated"`
 }
@@ -75,6 +78,15 @@ func event(name, level string) {
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]string{
 		"time": time.Now().UTC().Format(time.RFC3339Nano), "level": "info", "component": "lab_supervisor",
 		"event": name, "diagnostic_level": level})
+}
+
+func childExit(err error) (int, int) {
+	if err == nil { return 0, 0 }
+	if e, ok := err.(*exec.ExitError); ok {
+		if s, ok := e.Sys().(syscall.WaitStatus); ok && s.Signaled() { return -1, int(s.Signal()) }
+		return e.ExitCode(), 0
+	}
+	return -1, 0
 }
 
 func saveStatus(s status) error {
@@ -149,6 +161,7 @@ func run(service string, args []string) int {
 	var eval evaluator
 	read := func() status { raw, _ := os.ReadFile(policyPath); return eval.evaluate(raw, time.Now()) }
 	current := read()
+	var generation uint64
 	for {
 		cmd, err := childCommand(service, current.Effective, args, os.Environ())
 		if err != nil {
@@ -162,6 +175,8 @@ func run(service string, args []string) int {
 		done := make(chan error, 1)
 		go func() { done <- cmd.Wait() }()
 		current.ChildPID = cmd.Process.Pid
+		generation++
+		current.ChildGeneration = generation
 		if saveStatus(current) != nil {
 			event("status_write_failed", current.Effective)
 			stopChild(cmd, done)
@@ -175,11 +190,16 @@ func run(service string, args []string) int {
 				stopChild(cmd, done)
 				event("supervisor_stopped", current.Effective)
 				return 0
-			case <-done:
+			case err := <-done:
+				code, sig := childExit(err)
+				current.ExitCode, current.Signal = &code, sig
 				current.Error = "child_exited"
 				current.ChildPID = 0
 				_ = saveStatus(current)
-				event("child_exited", current.Effective)
+				_ = json.NewEncoder(os.Stderr).Encode(map[string]any{
+					"time": time.Now().UTC().Format(time.RFC3339Nano), "level": "error",
+					"component": "lab_supervisor", "event": "child_exited", "diagnostic_level": current.Effective,
+					"exit_code": code, "signal": sig})
 				return 1 // Docker restart policy recreates the process and rechecks the lease.
 			case <-ticker.C:
 				next := read()
@@ -191,6 +211,7 @@ func run(service string, args []string) int {
 					restart = true
 				} else {
 					next.ChildPID = cmd.Process.Pid
+					next.ChildGeneration = generation
 					current = next
 					if saveStatus(current) != nil {
 						event("status_write_failed", current.Effective)

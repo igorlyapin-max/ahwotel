@@ -14,6 +14,21 @@ spec.loader.exec_module(dashboards)
 
 
 class LabRegressionTest(unittest.TestCase):
+    def test_queue_status_distinguishes_full_and_missing_metrics(self):
+        fixture = ('otelcol_exporter_queue_size{exporter="otlp_http/prometheus"} %s\n'
+                   'otelcol_exporter_queue_capacity{exporter="otlp_http/prometheus"} 10000\n')
+        self.assertTrue(lab.queue_status(fixture % 10000)['full'])
+        self.assertFalse(lab.queue_status(fixture % 9999)['full'])
+        with self.assertRaises(KeyError): lab.queue_status('')
+
+    def test_memory_limit_validation(self):
+        for name in ('PROMETHEUS_MEMORY_LIMIT', 'GRAFANA_MEMORY_LIMIT'):
+            for value in ('2g', '1024m', '0g', '2GB', '-1g', 'unlimited'):
+                with self.subTest(name=name, value=value), patch.dict('os.environ', {'LAB_BIND_ADDRESS': '127.0.0.1', name: value}):
+                    if value in ('2g', '1024m'): self.assertEqual(value, lab.environment()[name])
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'MEMORY_LIMIT'): lab.environment()
+
     def test_help_is_exact_localized_and_published(self):
         for lang in ('en', 'ru'):
             board = dashboards.build(lang)

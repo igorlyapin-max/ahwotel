@@ -43,6 +43,7 @@ def main():
             assert len(found)==1, (name,'expected one stable time series',found)
             assert found[0]['metric']['monitoring_session_id']==expected['sessionId']
             assert 'window_start' not in found[0]['metric']
+            assert 'segment' not in found[0]['metric']
             return [[float(a),float(b)] for a,b in found[0]['values']]
         assert points('device_memory_available_bytes')==[[t,123456.0],[t+2,123457.0]]+([[t+4,123458.0]] if recovery else [])
         assert points('device_battery_level_percent')==[[t,70.0],[t+2,71.0]]

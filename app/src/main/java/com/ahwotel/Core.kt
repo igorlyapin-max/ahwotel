@@ -35,6 +35,8 @@ data class Settings(
     val durationSeconds: Long = 300,
     val maxDurationSeconds: Long = 86400,
     val continuous: Boolean = false,
+    val resumeOnBoot: Boolean = false,
+    val resumeOnOpen: Boolean = false,
     val collectScreenOff: Boolean = true,
     val indirectCpu: Boolean = true,
     val enabled: Set<CollectorKind> = CollectorKind.entries.toSet(),

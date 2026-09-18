@@ -2,10 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestChildExitPreservesCodeAndSignal(t *testing.T) {
+	for _, test := range []struct { script string; code, signal int }{
+		{"exit 0", 0, 0}, {"exit 17", 17, 0}, {"kill -KILL $$", -1, 9},
+	} {
+		code, signal := childExit(exec.Command("/bin/sh", "-c", test.script).Run())
+		if code != test.code || signal != test.signal { t.Fatalf("got %d/%d want %d/%d", code, signal, test.code, test.signal) }
+	}
+}
 
 func encode(p policy) []byte { data, _ := json.Marshal(p); return data }
 

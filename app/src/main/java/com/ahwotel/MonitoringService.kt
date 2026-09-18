@@ -48,14 +48,32 @@ class MonitoringService : Service() {
                 if (intent?.action == STOP) {
                     val id = intent.getStringExtra("sessionId")
                     app.mutex.withLock {
-                        if (id != null && id == active && app.requestSessionStopLocked(id, "manual_stop")) job?.cancel()
+                        if (id != null && id == active) {
+                            if (app.requestSessionStopLocked(id, "manual_stop")) job?.cancel()
+                            app.persistResumeStopLocked("manual_stop")
+                        }
                         else app.logs.event("stop_session_mismatch", error = true)
                         if (active == null) stopSelf()
                     }
                     return@launch
                 }
-                val request = parse(intent, app.settings.value)
                 app.mutex.withLock {
+                    val trigger = if (intent == null) ResumeTrigger.PROCESS else
+                        intent.getStringExtra("resumeTrigger")?.let { ResumeTrigger.valueOf(it) }
+                    if (active != null) { app.logs.event("start_conflict", error = true); return@withLock }
+                    val previous = app.db.resumeDao().get() ?: ResumeRow()
+                    val request = if (trigger != null) {
+                        val rejection = ResumePolicy.rejection(previous, app.settings.value, trigger, app.resumeGuard.blocked.value)
+                        if (rejection != null) {
+                            app.db.resumeDao().put(previous.copy(armed = previous.armed && app.settings.value.monitoringEnabled,
+                                trigger = trigger.name.lowercase(), result = rejection))
+                            stopSelf(); return@withLock
+                        }
+                        val saved = SettingsCodec.decode(previous.configuration)
+                        check(saved.continuous)
+                        StartRequest(UUID.randomUUID().toString(), true, saved.durationSeconds, saved.intervalMs,
+                            saved.enabled, "resume_" + trigger.name.lowercase()).also { require(it.valid(app.settings.value)) }
+                    } else parse(intent, app.settings.value)
                     if (app.db.dao().session(request.id) != null) {
                         app.logs.event("start_duplicate")
                         if (active == null) stopSelf()
@@ -67,22 +85,39 @@ class MonitoringService : Service() {
                     val session = SessionRow(request.id, snapshot.deviceId, System.currentTimeMillis(),
                         reason = request.reason, configuration = SettingsCodec.encode(snapshot),
                         continuous = request.continuous, durationSeconds = request.durationSeconds)
-                    app.db.dao().start(session)
+                    app.resumeGuard.block()
+                    app.db.withTransaction {
+                        app.db.dao().start(session)
+                        app.db.resumeDao().put(ResumeRow(armed = snapshot.continuous,
+                            configuration = session.configuration, trigger = trigger?.name?.lowercase() ?: "manual",
+                            result = "started"))
+                    }
+                    if (snapshot.continuous) runCatching { app.resumeGuard.allow() }
+                    else app.resumeGuard.issue.value = null
                     active = request.id
                     val timing = SessionTiming(session.id, SystemClock.elapsedRealtime(), session.continuous, session.durationSeconds)
                     app.sessionTiming = timing
                     app.state.value = timing.runtime(false, timing.startedElapsedMs)
                     refreshNotification()
                     app.logs.event("session_started")
+                    if (trigger != null) app.logs.event("session_resumed_" + trigger.name.lowercase())
                     job = scope.launch(start = CoroutineStart.ATOMIC) { runSession(session, snapshot, timing.startedElapsedMs) }
+                    app.sessionJob = job
                 }
             } catch (e: Exception) {
                 val code = if (e.message == "no_collectors") "no_collectors" else "command_rejected"
                 app.logs.event(code, error = true)
-                if (active == null) { app.state.value = RuntimeState(error = code); stopSelf() }
+                if (active == null) {
+                    runCatching { app.mutex.withLock {
+                        val row = app.db.resumeDao().get() ?: ResumeRow()
+                        app.db.resumeDao().put(row.copy(result = "start_failed"))
+                    } }
+                    app.state.value = RuntimeState(error = code); stopSelf()
+                }
             }
         }
-        return START_NOT_STICKY
+        // A null restart intent rechecks durable intent; timed or stopped sessions never restart.
+        return START_STICKY
     }
 
     private suspend fun runSession(session: SessionRow, snapshot: Settings, start: Long) {
@@ -98,7 +133,7 @@ class MonitoringService : Service() {
         var paused = false
         var count = 0
         var cleanupAt = start
-        var endReason = "manual_stop"
+        var endReason = "process_interrupted"
         var telemetry: Telemetry? = null
         var lastCapabilities = ""
         var notificationLanguage = snapshot.language
@@ -200,10 +235,15 @@ class MonitoringService : Service() {
                 runCatching { app.agentTelemetry.stop() }.onFailure { app.logs.event("self_telemetry_flush_failed", error = true) }
                 app.mutex.withLock {
                     app.sessionTiming?.takeIf { it.sessionId == session.id }?.stopReason?.let { endReason = it }
-                    runCatching { app.db.dao().finish(session.id, System.currentTimeMillis(), endReason) }
+                    if (endReason != "process_interrupted") app.persistResumeStopLocked(endReason)
+                    runCatching {
+                        app.db.dao().finish(session.id, System.currentTimeMillis(), endReason,
+                            if (endReason == "process_interrupted") "INTERRUPTED" else "FINISHED")
+                    }
                         .onFailure { app.logs.event("session_finish_write_failed", error = true) }
                     active = null
                     app.sessionTiming = null
+                    app.sessionJob = null
                     app.state.value = RuntimeState(error = if (endReason == "storage_or_collection_failed") endReason else null)
                 }
                 if (endReason == "timeout") app.logs.event("session_timer_expired", diagnostic = true)
@@ -247,6 +287,10 @@ class MonitoringService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) { job?.cancel(); stopSelf() }
 
     companion object {
+        fun resume(context: Context, trigger: ResumeTrigger) {
+            ContextCompat.startForegroundService(context, Intent(context, MonitoringService::class.java)
+                .putExtra("resumeTrigger", trigger.name))
+        }
         const val START = "com.ahwotel.START"
         const val STOP = "com.ahwotel.STOP"
         const val CHANNEL = "monitoring"

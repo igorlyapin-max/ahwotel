@@ -61,7 +61,7 @@
     <string name="identity_busy">Stop monitoring and drain or disable the export queue before changing device identity.</string>
     <string name="session_snapshot">Interval, collectors and thresholds apply to the next session. After saving, continuous mode, duration and screen-off behavior apply to the active session.</string>
     <string name="session_timing_hint">After saving, the mode and duration also apply to the current session. A time limit is always counted from the original session start, including screen-off pauses. Turning off continuous mode or shortening the duration stops collection immediately if that limit has already elapsed.</string>
-    <string name="background_collection_hint">Leaving with Back or Home, or removing the app from recent apps, keeps collection running in the notification service. Use Stop here or in the notification. Force-stop, process termination or a reboot ends collection; it does not restart automatically. Device restrictions may interrupt background collection.</string>
+    <string name="background_collection_hint">Leaving with Back or Home, or removing the app from recent apps, keeps collection running in the notification service. Use Stop here or in the notification. Process termination or a reboot ends the current session. The resume options can start a new continuous session after an earlier Start; Stop disables resumption. System Force-stop is not bypassed. Device restrictions may interrupt background collection.</string>
     <string name="session_starting">Starting collection…</string>
     <string name="session_timing_apply_failed">Could not apply the session timing. Check diagnostics and retry; the timing change was not confirmed.</string>
     <string name="otlp">OTLP export</string>
@@ -148,4 +148,23 @@
     <string name="sources_not_checked">Start monitoring or check availability.</string>
     <string name="source_check_failed">Availability check failed. See diagnostic log.</string>
     <string name="source_check_hint">Checked inside this app. While idle, the short check saves no readings. During a session, it requests a recheck by the active collectors.</string>
+    <string name="resume_boot">Resume after device restart</string>
+    <string name="resume_open">Resume when opening the app</string>
+    <string name="resume_title">Automatic resumption</string>
+    <string name="resume_help">Continuous means no time limit. Start monitoring once to allow resumption; these switches alone do not start collection. A resumed session has a new ID. Stop in the app, notification or SOTI disables resumption until the next Start. Timed sessions and administratively disabled monitoring do not resume. Boot resumption requires unlocking the device. Android or manufacturer restrictions may require opening the app manually; system Force stop is not bypassed. With either switch enabled, Android may also restore a service whose process was killed.</string>
+    <string name="resume_armed">A continuous session may resume according to the enabled options.</string>
+    <string name="resume_unarmed">Resumption is not armed. Press Start to begin a continuous session.</string>
+    <string name="resume_trigger">Last start or resumption trigger: %1$s</string>
+    <string name="resume_manual">Manual Start / SOTI</string>
+    <string name="resume_process">Service process recovery</string>
+    <string name="resume_none">No attempt</string>
+    <string name="resume_started">Session started.</string>
+    <string name="resume_requested">Waiting for the service to start.</string>
+    <string name="resume_stopped">Stopped explicitly; automatic resumption is disabled until Start.</string>
+    <string name="resume_option_disabled">Resumption for this event is disabled in Settings.</string>
+    <string name="resume_timed">Timed sessions do not resume automatically.</string>
+    <string name="resume_failed">Could not start collection. Open the app and press Start; check Android background restrictions and storage.</string>
+    <string name="resume_guard_write_failed">Automatic resumption is blocked in this process, but the block could not be saved. If you requested Stop, collection is stopped now; the block after a restart is not confirmed. Restore storage access and press Start then Stop again.</string>
+    <string name="resume_state_write_failed">The resumption state could not be updated in the database. Collection stops when requested; automatic resumption remains blocked by the saved safeguard. See the diagnostic log.</string>
+    <string name="resume_change_incomplete">Automatic resumption is blocked after an update or an incomplete change. Start a new continuous session explicitly to enable it again.</string>
 </resources>

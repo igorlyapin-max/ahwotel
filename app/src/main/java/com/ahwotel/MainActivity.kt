@@ -36,6 +36,11 @@ val Surface = Color(0xFF14222D)
 val Ink = Color(0xFFE4EEF4)
 
 class MainActivity : AppCompatActivity() {
+    override fun onStart() {
+        super.onStart()
+        val app = application as MonitorApp
+        app.scope.launch { app.requestResume(ResumeTrigger.OPEN) }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         if (AppCompatDelegate.getApplicationLocales().isEmpty)
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("en"))
@@ -109,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
     val settings by app.settings.collectAsStateWithLifecycle()
     val state by app.state.collectAsStateWithLifecycle()
+    val resumeIssue by app.resumeGuard.issue.collectAsStateWithLifecycle()
     val latestFlow = remember { app.db.dao().latest() }
     val latest by latestFlow.collectAsStateWithLifecycle(initialValue = null)
     val context = LocalContext.current
@@ -118,6 +124,7 @@ class MainActivity : AppCompatActivity() {
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle("AHWOTel", stringResource(R.string.local_first)) }
+        resumeIssue?.let { code -> item { Text(stringResource(resumeIssueText(code)), color = MaterialTheme.colorScheme.error) } }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ extraPage = "battery" }) { Text(stringResource(R.string.at_battery_title)) }
             OutlinedButton({ extraPage = "self" }) { Text(stringResource(R.string.at_self_title)) }

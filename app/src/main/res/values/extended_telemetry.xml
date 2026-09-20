@@ -1,0 +1,28 @@
+<resources>
+<string name="ext_battery">Additional battery APIs</string>
+<string name="ext_process_io">Process I/O</string>
+<string name="ext_system_io">System I/O probes</string>
+<string name="ext_flash">Flash lifetime probes</string>
+<string name="ext_io_interval">I/O interval, seconds</string>
+<string name="ext_unavailable">%1$s · Unavailable measurements (%2$d)</string>
+<string name="ext_expanded">Expanded</string>
+<string name="ext_collapsed">Collapsed</string>
+<string name="ext_recheck">Check availability</string>
+<string name="ext_summary">Battery: last 24 hours</string>
+<string name="ext_summary_values">Temperature: %1$s °C; charge: %2$s%%</string>
+<string name="ext_summary_time">Observed: %1$s h; external power: %2$s h; discharging: %3$s h</string>
+<string name="ext_summary_hint">Durations cover adjacent valid observations only, within the same session and segment. Gaps are excluded. This is not measured battery wear.</string>
+<string name="ext_scope_device">Scope: device</string>
+<string name="ext_scope_process">Scope: AHWOTel process</string>
+<string name="ext_stale">Last observation; may be stale</string>
+<string name="ext_charge_normal">Normal charging</string>
+<string name="ext_charge_cold">Charging limited: cold</string>
+<string name="ext_charge_hot">Charging limited: hot</string>
+<string name="ext_charge_life">Long-life charging profile</string>
+<string name="ext_charge_adaptive">Adaptive charging</string>
+<string name="ext_flash_range">Estimated lifetime used: %1$d–%2$d%%</string>
+<string name="ext_flash_exceeded">Estimated lifetime exceeded</string>
+<string name="ext_flash_normal">Normal reserve</string>
+<string name="ext_flash_warning">Reserve warning</string>
+<string name="ext_flash_urgent">Reserve urgent</string>
+</resources>

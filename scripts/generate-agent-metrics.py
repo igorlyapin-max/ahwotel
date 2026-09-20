@@ -79,22 +79,603 @@ rows=[
 ('SELF_BYTES','self.bytes','By','TASKS','SUM','Self Telemetry bytes','Байты телеметрии приложения','Serialized self data produced by previous windows; transport bytes reported separately.','Сериализованные данные телеметрии приложения из предыдущих окон; транспортные байты учитываются отдельно.'),
 ('SELF_OVERHEAD','self.cpu_fraction','%','CPU','GAUGE','Measured self CPU fraction','Измеренная доля CPU телеметрии приложения','Measured self CPU / process CPU delta. Partial scope: asynchronous work is excluded; not proof of the complete 5% budget.','Измеренное CPU-время телеметрии приложения / дельта CPU процесса. Неполная область: асинхронная работа исключена; не доказывает бюджет 5% целиком.'),
 ]
+rows += [('CURRENT_AVERAGE',
+  'battery.current_average',
+  'uA',
+  'BATTERY',
+  'GAUGE',
+  'Average battery current',
+  'Средний ток батареи',
+  'Signed device current averaged by the controller; the averaging window is firmware dependent. Positive '
+  'means charging.',
+  'Средний ток всей батареи; окно усреднения определяет прошивка. Положительное значение означает зарядку.'),
+ ('ENERGY',
+  'battery.energy',
+  'nWh',
+  'BATTERY',
+  'GAUGE',
+  'Remaining battery energy',
+  'Остаточная энергия батареи',
+  'Remaining energy from BatteryManager, not design energy or state of health.',
+  'Остаточная энергия BatteryManager, а не проектная энергия или остаточное здоровье.'),
+ ('CHARGE_TIME',
+  'battery.charge_time_remaining',
+  'ms',
+  'BATTERY',
+  'GAUGE',
+  'Time to full charge',
+  'Время до полного заряда',
+  'Android prediction while charging. A missing prediction is not zero; compare predictions only under '
+  'stable charging conditions.',
+  'Прогноз Android во время зарядки. Отсутствие прогноза не означает ноль; сравнивайте при стабильных '
+  'условиях зарядки.'),
+ ('CHARGING_DETAIL',
+  'battery.charging_detail',
+  '1',
+  'BATTERY',
+  'STATE',
+  'Extended charging status',
+  'Режим зарядки Android',
+  'Android 14 charging status: 1 normal, 2 too cold, 3 too hot, 4 long life, 5 adaptive. Unknown codes '
+  'remain unavailable.',
+  'Расширенный статус Android 14: 1 обычный, 2 слишком холодно, 3 слишком горячо, 4 долговечность, 5 '
+  'адаптивный. Неизвестные коды недоступны.'),
+ ('IO_READ_BYTES',
+  'storage.io.read_bytes',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Storage bytes read',
+  'Прочитано с накопителя',
+  'Process /proc/self/io read_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io read_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_READ_BYTES_DELTA',
+  'storage.io.read_bytes.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Storage bytes read in interval',
+  'Прочитано с накопителя за интервал',
+  'Process /proc/self/io read_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io read_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_READ_BYTES_RATE',
+  'storage.io.read_bytes.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Storage bytes read per second',
+  'Прочитано с накопителя в секунду',
+  'Process /proc/self/io read_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io read_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_WRITE_BYTES',
+  'storage.io.write_bytes',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Storage bytes written',
+  'Записано на накопитель',
+  'Process /proc/self/io write_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io write_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_WRITE_BYTES_DELTA',
+  'storage.io.write_bytes.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Storage bytes written in interval',
+  'Записано на накопитель за интервал',
+  'Process /proc/self/io write_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io write_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_WRITE_BYTES_RATE',
+  'storage.io.write_bytes.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Storage bytes written per second',
+  'Записано на накопитель в секунду',
+  'Process /proc/self/io write_bytes. Storage writes are accounted when pages become dirty; cancelled writes '
+  'are separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io write_bytes. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_CANCELLED_WRITE_BYTES',
+  'storage.io.cancelled_write_bytes',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Cancelled write bytes',
+  'Отменённая запись',
+  'Process /proc/self/io cancelled_write_bytes. Storage writes are accounted when pages become dirty; '
+  'cancelled writes are separate. Logical bytes include cache and non-disk I/O; syscall counts are not '
+  'hardware IOPS.',
+  'Счётчик процесса /proc/self/io cancelled_write_bytes. Запись учитывается при изменении страниц; '
+  'отменённая запись отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны '
+  'аппаратным IOPS.'),
+ ('IO_CANCELLED_WRITE_BYTES_DELTA',
+  'storage.io.cancelled_write_bytes.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Cancelled write bytes in interval',
+  'Отменённая запись за интервал',
+  'Process /proc/self/io cancelled_write_bytes. Storage writes are accounted when pages become dirty; '
+  'cancelled writes are separate. Logical bytes include cache and non-disk I/O; syscall counts are not '
+  'hardware IOPS. A new baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io cancelled_write_bytes. Запись учитывается при изменении страниц; '
+  'отменённая запись отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны '
+  'аппаратным IOPS. После перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_CANCELLED_WRITE_BYTES_RATE',
+  'storage.io.cancelled_write_bytes.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Cancelled write bytes per second',
+  'Отменённая запись в секунду',
+  'Process /proc/self/io cancelled_write_bytes. Storage writes are accounted when pages become dirty; '
+  'cancelled writes are separate. Logical bytes include cache and non-disk I/O; syscall counts are not '
+  'hardware IOPS. A new baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io cancelled_write_bytes. Запись учитывается при изменении страниц; '
+  'отменённая запись отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны '
+  'аппаратным IOPS. После перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_RCHAR',
+  'storage.io.rchar',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Logical bytes read',
+  'Логическое чтение',
+  'Process /proc/self/io rchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io rchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_RCHAR_DELTA',
+  'storage.io.rchar.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Logical bytes read in interval',
+  'Логическое чтение за интервал',
+  'Process /proc/self/io rchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io rchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_RCHAR_RATE',
+  'storage.io.rchar.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Logical bytes read per second',
+  'Логическое чтение в секунду',
+  'Process /proc/self/io rchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io rchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_WCHAR',
+  'storage.io.wchar',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Logical bytes written',
+  'Логическая запись',
+  'Process /proc/self/io wchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io wchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_WCHAR_DELTA',
+  'storage.io.wchar.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Logical bytes written in interval',
+  'Логическая запись за интервал',
+  'Process /proc/self/io wchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io wchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_WCHAR_RATE',
+  'storage.io.wchar.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Logical bytes written per second',
+  'Логическая запись в секунду',
+  'Process /proc/self/io wchar. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io wchar. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_SYSCR',
+  'storage.io.syscr',
+  '1',
+  'STORAGE',
+  'GAUGE',
+  'Read system calls',
+  'Системные вызовы чтения',
+  'Process /proc/self/io syscr. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io syscr. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_SYSCR_DELTA',
+  'storage.io.syscr.delta',
+  '1',
+  'STORAGE',
+  'SUM',
+  'Read system calls in interval',
+  'Системные вызовы чтения за интервал',
+  'Process /proc/self/io syscr. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io syscr. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_SYSCR_RATE',
+  'storage.io.syscr.rate',
+  '1/s',
+  'STORAGE',
+  'GAUGE',
+  'Read system calls per second',
+  'Системные вызовы чтения в секунду',
+  'Process /proc/self/io syscr. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io syscr. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_SYSCW',
+  'storage.io.syscw',
+  '1',
+  'STORAGE',
+  'GAUGE',
+  'Write system calls',
+  'Системные вызовы записи',
+  'Process /proc/self/io syscw. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS.',
+  'Счётчик процесса /proc/self/io syscw. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS.'),
+ ('IO_SYSCW_DELTA',
+  'storage.io.syscw.delta',
+  '1',
+  'STORAGE',
+  'SUM',
+  'Write system calls in interval',
+  'Системные вызовы записи за интервал',
+  'Process /proc/self/io syscw. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io syscw. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('IO_SYSCW_RATE',
+  'storage.io.syscw.rate',
+  '1/s',
+  'STORAGE',
+  'GAUGE',
+  'Write system calls per second',
+  'Системные вызовы записи в секунду',
+  'Process /proc/self/io syscw. Storage writes are accounted when pages become dirty; cancelled writes are '
+  'separate. Logical bytes include cache and non-disk I/O; syscall counts are not hardware IOPS. A new '
+  'baseline is required after restart, reset or a gap.',
+  'Счётчик процесса /proc/self/io syscw. Запись учитывается при изменении страниц; отменённая запись '
+  'отдельно. Логические байты включают кеш и операции вне диска; вызовы не равны аппаратным IOPS. После '
+  'перезапуска, сброса или пропуска нужен новый отсчёт.'),
+ ('SYSTEM_READ_BYTES',
+  'storage.block.read_bytes',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Read bytes',
+  'Прочитанные байты',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_READ_BYTES_DELTA',
+  'storage.block.read_bytes.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Read bytes in interval',
+  'Прочитанные байты за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_READ_BYTES_RATE',
+  'storage.block.read_bytes.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Read bytes per second',
+  'Прочитанные байты в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_BYTES',
+  'storage.block.write_bytes',
+  'By',
+  'STORAGE',
+  'GAUGE',
+  'Write bytes',
+  'Записанные байты',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_BYTES_DELTA',
+  'storage.block.write_bytes.delta',
+  'By',
+  'STORAGE',
+  'SUM',
+  'Write bytes in interval',
+  'Записанные байты за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_BYTES_RATE',
+  'storage.block.write_bytes.rate',
+  'By/s',
+  'STORAGE',
+  'GAUGE',
+  'Write bytes per second',
+  'Записанные байты в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_READ_OPS',
+  'storage.block.read_ops',
+  '1',
+  'STORAGE',
+  'GAUGE',
+  'Read operations',
+  'Операции чтения',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_READ_OPS_DELTA',
+  'storage.block.read_ops.delta',
+  '1',
+  'STORAGE',
+  'SUM',
+  'Read operations in interval',
+  'Операции чтения за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_READ_OPS_RATE',
+  'storage.block.read_ops.rate',
+  '1/s',
+  'STORAGE',
+  'GAUGE',
+  'Read operations per second',
+  'Операции чтения в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_OPS',
+  'storage.block.write_ops',
+  '1',
+  'STORAGE',
+  'GAUGE',
+  'Write operations',
+  'Операции записи',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_OPS_DELTA',
+  'storage.block.write_ops.delta',
+  '1',
+  'STORAGE',
+  'SUM',
+  'Write operations in interval',
+  'Операции записи за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WRITE_OPS_RATE',
+  'storage.block.write_ops.rate',
+  '1/s',
+  'STORAGE',
+  'GAUGE',
+  'Write operations per second',
+  'Операции записи в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_IO_MS',
+  'storage.block.io_ms',
+  'ms',
+  'STORAGE',
+  'GAUGE',
+  'Busy I/O time',
+  'Время активности I/O',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_IO_MS_DELTA',
+  'storage.block.io_ms.delta',
+  'ms',
+  'STORAGE',
+  'SUM',
+  'Busy I/O time in interval',
+  'Время активности I/O за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_IO_MS_RATE',
+  'storage.block.io_ms.rate',
+  'ms/s',
+  'STORAGE',
+  'GAUGE',
+  'Busy I/O time per second',
+  'Время активности I/O в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WEIGHTED_MS',
+  'storage.block.weighted_ms',
+  'ms',
+  'STORAGE',
+  'GAUGE',
+  'Weighted I/O time',
+  'Взвешенное время I/O',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WEIGHTED_MS_DELTA',
+  'storage.block.weighted_ms.delta',
+  'ms',
+  'STORAGE',
+  'SUM',
+  'Weighted I/O time in interval',
+  'Взвешенное время I/O за интервал',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_WEIGHTED_MS_RATE',
+  'storage.block.weighted_ms.rate',
+  'ms/s',
+  'STORAGE',
+  'GAUGE',
+  'Weighted I/O time per second',
+  'Взвешенное время I/O в секунду',
+  'Per physical block device, no sum across partitions or device mapper. Sectors are 512 bytes. Time '
+  'counters describe kernel accounting, not individual request latency.',
+  'Для физического блочного устройства, без суммирования разделов и device mapper. Сектор равен 512 байтам. '
+  'Время отражает учёт ядра, а не задержку отдельного запроса.'),
+ ('SYSTEM_PSI_AVG10',
+  'storage.psi.avg10',
+  '%',
+  'STORAGE',
+  'GAUGE',
+  'I/O pressure: 10 s average',
+  'Ожидание I/O: Среднее за 10 с',
+  'System /proc/pressure/io. Component some means at least one task stalled; full means all non-idle tasks '
+  'stalled simultaneously. It is not disk utilization.',
+  'Системный /proc/pressure/io. Компонент some означает ожидание хотя бы одной задачи; full — всех не '
+  'простаивающих задач одновременно. Это не загрузка диска.'),
+ ('SYSTEM_PSI_AVG60',
+  'storage.psi.avg60',
+  '%',
+  'STORAGE',
+  'GAUGE',
+  'I/O pressure: 60 s average',
+  'Ожидание I/O: Среднее за 60 с',
+  'System /proc/pressure/io. Component some means at least one task stalled; full means all non-idle tasks '
+  'stalled simultaneously. It is not disk utilization.',
+  'Системный /proc/pressure/io. Компонент some означает ожидание хотя бы одной задачи; full — всех не '
+  'простаивающих задач одновременно. Это не загрузка диска.'),
+ ('SYSTEM_PSI_AVG300',
+  'storage.psi.avg300',
+  '%',
+  'STORAGE',
+  'GAUGE',
+  'I/O pressure: 300 s average',
+  'Ожидание I/O: Среднее за 300 с',
+  'System /proc/pressure/io. Component some means at least one task stalled; full means all non-idle tasks '
+  'stalled simultaneously. It is not disk utilization.',
+  'Системный /proc/pressure/io. Компонент some означает ожидание хотя бы одной задачи; full — всех не '
+  'простаивающих задач одновременно. Это не загрузка диска.'),
+ ('SYSTEM_PSI_TOTAL',
+  'storage.psi.total',
+  'us',
+  'STORAGE',
+  'GAUGE',
+  'I/O pressure: Total stall time',
+  'Ожидание I/O: Суммарное ожидание',
+  'System /proc/pressure/io. Component some means at least one task stalled; full means all non-idle tasks '
+  'stalled simultaneously. It is not disk utilization.',
+  'Системный /proc/pressure/io. Компонент some означает ожидание хотя бы одной задачи; full — всех не '
+  'простаивающих задач одновременно. Это не загрузка диска.'),
+ ('SYSTEM_PSI_DELTA',
+  'storage.psi.stall_delta',
+  'us',
+  'STORAGE',
+  'SUM',
+  'I/O stall in interval',
+  'Ожидание I/O за интервал',
+  'Difference of PSI stall counters. Components some and full overlap and must not be added.',
+  'Разность счётчиков ожидания PSI. Компоненты some и full пересекаются; складывать их нельзя.'),
+ ('FLASH_LIFE',
+  'storage.emmc.life_time',
+  '1',
+  'STORAGE',
+  'STATE',
+  'eMMC lifetime category',
+  'Категория износа eMMC',
+  'JEDEC lifetime A/B: 1 means 0–10% used, 2 means 10–20%, through 10 meaning 90–100%; 11 exceeds estimated '
+  'lifetime. Zero is unknown. Not an exact health percentage.',
+  'Категории JEDEC A/B: 1 означает израсходовано 0–10%, 2 — 10–20%, до 10 — 90–100%; 11 — расчётный ресурс '
+  'превышен. Ноль означает неизвестно. Это не точный процент здоровья.'),
+ ('FLASH_EOL',
+  'storage.emmc.pre_eol',
+  '1',
+  'STORAGE',
+  'STATE',
+  'eMMC reserve state',
+  'Состояние резерва eMMC',
+  'JEDEC pre-EOL: 1 normal, 2 warning, 3 urgent. Vendor support and access are required; not battery health.',
+  'JEDEC pre-EOL: 1 норма, 2 предупреждение, 3 критично. Требуются поддержка и доступ; это не здоровье '
+  'батареи.')]
 p=root/'app/src/main/java/com/ahwotel/AgentMetric.kt'
 s='package com.ahwotel\n\nenum class MetricAggregation { GAUGE, SUM, MAX, STATE }\nenum class AgentMetric(val wire: String, val unit: String, val group: String, val aggregation: MetricAggregation, val title: Int, val help: Int) {\n'
 for name,wire,unit,group,agg,en,ru,_,_ in rows:
- prefix='device.' if group in ('BATTERY','WEAR','PASSPORT') else 'agent.'
+ prefix='device.' if group in ('BATTERY','WEAR','PASSPORT') or name.startswith(('SYSTEM_', 'FLASH_')) else 'agent.'
  s+=f'    {name}("{prefix}{wire}", "{unit}", "{group}", MetricAggregation.{agg}, R.string.at_{name.lower()}_title, R.string.at_{name.lower()}_help),\n'
-s=s.rstrip(',\n')+';\n    val battery get() = group in setOf("BATTERY", "WEAR", "PASSPORT")\n}\n'
+s=s.rstrip(',\n')+';\n    val battery get() = group in setOf("BATTERY", "WEAR", "PASSPORT")\n    val scope get() = if (wire.startsWith("device.")) "device" else "agent_process"\n}\n'
 p.write_text(s)
 for locale,idx in [('values',0),('values-ru',1)]:
  out=['<resources>']
  for name,wire,unit,group,agg,en,ru,meaning_en,meaning_ru in rows:
   battery=group in ('BATTERY','WEAR','PASSPORT')
-  wire=('device.' if battery else 'agent.')+wire
+  device = battery or name.startswith(('SYSTEM_', 'FLASH_'))
+  wire=('device.' if device else 'agent.')+wire
   if idx==0:
-   title=en; text=f'What it measures\\n{meaning_en}\\n\\nScope and units\\n'+('Entire device battery' if battery else 'This monitoring application')+f'; {unit}.\\n\\nImpact\\nUse the trend to investigate '+('autonomy and battery condition' if battery else 'agent resource cost and regressions')+f'.\\n\\nInterpretation\\nCompare the same model, Android version, agent build and configuration. Aggregation: {agg}.\\n\\nExample\\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\\n\\nLimitations\\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\\n\\nPerformance State\\nThis metric does not change Performance State automatically. Device battery drain is not agent energy consumption.\\n\\nSource\\n{wire}. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation.'
+   scope = 'Entire device battery' if battery else 'Device flash storage, separated by component' if name.startswith('FLASH_') else 'Entire device storage and I/O' if name.startswith('SYSTEM_') else 'This monitoring application'
+   impact = 'autonomy and battery condition' if battery else 'flash wear and the risk of exhausting storage lifetime' if name.startswith('FLASH_') else 'device-wide I/O pressure, queueing and latency' if name.startswith('SYSTEM_') else 'agent resource cost and regressions'
+   state = 'This metric does not change Performance State automatically.' + (' Device battery drain is not agent energy consumption.' if battery else '')
+   title=en; text=f'What it measures\\n{meaning_en}\\n\\nScope and units\\n{scope}; {unit}.\\n\\nImpact\\nUse the trend to investigate {impact}.\\n\\nInterpretation\\nCompare the same model, Android version, agent build and configuration. Aggregation: {agg}.\\n\\nExample\\nCompare two equal observation windows under similar load and screen state. A higher value alone does not prove a fault.\\n\\nLimitations\\nUnavailable, invalid or stale values are not zero. See the source, reason, observation time and quality beside the value.\\n\\nPerformance State\\n{state}\\n\\nSource\\n{wire}. The recorded source identifies Android API, verified sysfs, instrumented operation or calculation.'
   else:
-   title=ru; text=f'Что измеряется\\n{meaning_ru}\\n\\nОбласть и единицы\\n'+('Батарея всего устройства' if battery else 'Это приложение мониторинга')+f'; {unit}.\\n\\nВлияние\\nДинамика помогает исследовать '+('автономность и состояние батареи' if battery else 'стоимость агента и регрессии ресурсов')+f'.\\n\\nИнтерпретация\\nСравнивайте одинаковые модель, Android, сборку агента и настройки. Агрегация: '+{'GAUGE':'измерения и распределение','SUM':'сумма приращений за окно','MAX':'максимум за окно','STATE':'наблюдаемые состояния; длительности не вычисляются'}[agg]+f'.\\n\\nПример\\nСравните два равных окна при похожей нагрузке и состоянии экрана. Сам рост значения не доказывает неисправность.\\n\\nОграничения\\nНедоступные, некорректные и устаревшие значения не равны нулю. Смотрите источник, причину, время наблюдения и качество рядом со значением.\\n\\nPerformance State\\nМетрика автоматически не меняет Performance State. Разряд устройства не равен энергопотреблению агента.\\n\\nИсточник\\n{wire}. В записи указан Android API, проверенный sysfs, инструментированная операция или расчёт.'
+   scope = 'Батарея всего устройства' if battery else 'Флеш-память устройства, отдельно по компонентам' if name.startswith('FLASH_') else 'Хранение и I/O всего устройства' if name.startswith('SYSTEM_') else 'Это приложение мониторинга'
+   impact = 'автономность и состояние батареи' if battery else 'износ памяти и риск исчерпания ресурса накопителя' if name.startswith('FLASH_') else 'общесистемное давление I/O, очереди и задержки' if name.startswith('SYSTEM_') else 'стоимость агента и регрессии ресурсов'
+   state = 'Метрика автоматически не меняет Performance State.' + (' Разряд устройства не равен энергопотреблению агента.' if battery else '')
+   title=ru; text=f'Что измеряется\\n{meaning_ru}\\n\\nОбласть и единицы\\n{scope}; {unit}.\\n\\nВлияние\\nДинамика помогает исследовать {impact}.\\n\\nИнтерпретация\\nСравнивайте одинаковые модель, Android, сборку агента и настройки. Агрегация: '+{'GAUGE':'измерения и распределение','SUM':'сумма приращений за окно','MAX':'максимум за окно','STATE':'наблюдаемые состояния; длительности не вычисляются'}[agg]+f'.\\n\\nПример\\nСравните два равных окна при похожей нагрузке и состоянии экрана. Сам рост значения не доказывает неисправность.\\n\\nОграничения\\nНедоступные, некорректные и устаревшие значения не равны нулю. Смотрите источник, причину, время наблюдения и качество рядом со значением.\\n\\nPerformance State\\n{state}\\n\\nИсточник\\n{wire}. В записи указан Android API, проверенный sysfs, инструментированная операция или расчёт.'
   for suffix,value in [('title',title),('help',text)]:
    out.append(f'<string name="at_{name.lower()}_{suffix}" formatted="false">{escape(value).replace(chr(39),chr(92)+chr(39))}</string>')
  out.append('</resources>'); (root/f'app/src/main/res/{locale}/agent_metrics.xml').write_text('\n'.join(out)+'\n')

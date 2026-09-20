@@ -16,7 +16,7 @@ class AgentChartAccumulator(private val metric: AgentMetric, private val from: L
     fun add(r: TelemetryRecord) {
         if (r.time !in from..to) return
         val bucket = (((r.time-from).toDouble()/(to-from).coerceAtLeast(1))*buckets).toLong().coerceIn(0,buckets-1L)
-        val c = components.getOrPut(r.component) { sortedMapOf() }.getOrPut(bucket) { Cell() }
+        val c = components.getOrPut(r.component+if(r.source.startsWith("/")) " · "+r.source else "") { sortedMapOf() }.getOrPut(bucket) { Cell() }
         if (c.session == null) { c.session=r.sessionId; c.segment=r.segment }
         else if (c.session!=r.sessionId || c.segment!=r.segment) c.gap=true
         c.time=maxOf(c.time,r.time)
@@ -49,14 +49,14 @@ class AgentChartAccumulator(private val metric: AgentMetric, private val from: L
     }
 }
 
-suspend fun loadAgentChart(dao: AgentTelemetryDao,metric: AgentMetric,from: Long,to: Long): List<AgentChartSeries> {
+suspend fun loadAgentChart(dao: AgentTelemetryDao,metric: AgentMetric,from: Long,to: Long,session: String? = null): List<AgentChartSeries> {
     val through=dao.latestId()
     val accumulator=AgentChartAccumulator(metric,from,to)
     var afterTime=from; var afterId=0L
     while(true) {
-        val page=dao.chartPage(metric.name,from,to,afterTime,afterId,through)
+        val page=dao.chartPage(metric.name,from,to,afterTime,afterId,through,session)
         if(page.isEmpty()) break
-        page.forEach(accumulator::add)
+        page.filter { metric.acceptsStream(it.stream) }.forEach(accumulator::add)
         afterTime=page.last().time; afterId=page.last().id
     }
     return accumulator.finish()

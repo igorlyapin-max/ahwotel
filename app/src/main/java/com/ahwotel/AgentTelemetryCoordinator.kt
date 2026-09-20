@@ -13,6 +13,38 @@ import java.util.TimeZone
 class AgentTelemetryCoordinator(private val app: MonitorApp) {
     private val sampler=SelfSampler(app)
     private val drain=BatteryDrain()
+    private val io=IoTelemetry()
+    private val pendingSlowChecks=mutableSetOf("wear","passport")
+    val probes=kotlinx.coroutines.flow.MutableStateFlow<List<TelemetryRecord>>(emptyList())
+    suspend fun checkNow() {
+        recheck()
+        val s=app.settings.value
+        val b=s.batterySettings
+        val values=mutableListOf<AgentReading>()
+        if(b.enabled) {
+            if(b.current) values+=app.battery.current(b.extended).values
+            if(b.wear) values+=app.battery.wear(b.fallback)
+            if(b.passport) values+=app.battery.passport(b.fallback)
+        }
+        if(s.selfTelemetry.enabled && SelfGroup.STORAGE in s.selfTelemetry.groups)
+            values+=io.sample(SystemClock.elapsedRealtime(),s.selfTelemetry.processIo,s.selfTelemetry.systemIo,s.selfTelemetry.flashWear,s.selfTelemetry.ioSeconds*1000L)
+        values.forEach(::logStatus)
+        reportBattery(values,b.enabled && b.current,System.currentTimeMillis())
+    }
+    fun recheck() { io.recheck(); due.clear(); pendingSlowChecks.addAll(listOf("wear","passport")) }
+    private fun reportBattery(values: List<AgentReading>,enabled: Boolean,time: Long) {
+        app.sources.record(listOf(Metric.BATTERY,Metric.TEMPERATURE,Metric.CHARGING).map { metric ->
+            val r=values.find { it.metric==metric.batteryMetric() }
+            val status=if(!enabled) Availability.DISABLED else when(r?.status) {
+                "AVAILABLE" -> Availability.AVAILABLE
+                "UNSUPPORTED","PERMISSION_DENIED" -> Availability.UNSUPPORTED
+                "ERROR" -> Availability.ERROR
+                else -> Availability.WARMING_UP
+            }
+            val reason=if(!enabled) SourceReason.DISABLED else runCatching { SourceReason.valueOf(r?.reason ?: "MISSING_VALUE") }.getOrDefault(SourceReason.MISSING_VALUE)
+            SourceResult(metric,SourceId.BATTERY_BROADCAST,status,reason,time)
+        })
+    }
     private var session: SessionRow?=null
     private var startSettings=Settings()
     private var lastSettings: Settings?=null
@@ -22,8 +54,8 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
     private val due=mutableMapOf<String,Long>()
     private val slowLast=mutableMapOf<String,Long>()
     private val sendDue=mutableMapOf<String,Long>()
-    private val readings=linkedMapOf<Pair<AgentMetric,String>,Pair<AgentReading,MetricAccumulator>>()
-    private val missing=linkedMapOf<Pair<AgentMetric,String>,AgentReading>()
+    private val readings=linkedMapOf<Triple<AgentMetric,String,String>,Pair<AgentReading,MetricAccumulator>>()
+    private val missing=linkedMapOf<Triple<AgentMetric,String,String>,AgentReading>()
     private val batteryRows=mutableListOf<TelemetryRecord>()
     private val statuses=mutableMapOf<String,String>()
     private var lastElapsed=0L; private var lastWall=0L; private var wasPaused=false
@@ -31,10 +63,11 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
     private var lastWakeSeverity=0
     private var debugActive=false
     suspend fun start(s: SessionRow, snapshot: Settings = SettingsCodec.decode(s.configuration)) {
+        probes.value=emptyList()
         startSettings=snapshot
         session=s; metadata="{}"; lastSettings=null; signature=""; due.clear(); sendDue.clear(); readings.clear(); missing.clear(); batteryRows.clear(); statuses.clear()
-        slowLast.clear(); app.db.agentDao().schedules().forEach { slowLast[it.name]=it.last }
-        sampler.reset(); drain.reset(); segment=0; lastElapsed=0; wasPaused=false; app.costs.start(); app.costs.enabled=app.settings.value.selfTelemetry.enabled
+        io.recheck(); pendingSlowChecks.addAll(listOf("wear","passport")); slowLast.clear(); app.db.agentDao().schedules().forEach { slowLast[it.name]=it.last }
+        sampler.reset(); drain.reset(); io.reset(); segment=0; lastElapsed=0; wasPaused=false; app.costs.start(); app.costs.enabled=app.settings.value.selfTelemetry.enabled
         startWall=System.currentTimeMillis(); startElapsed=SystemClock.elapsedRealtime(); powerGeneration=app.battery.generation
         val settings=app.settings.value
         signature=configSignature(settings); lastSettings=settings
@@ -67,7 +100,8 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
         val discontinuity=lastElapsed>0 && (now-lastElapsed>120_000 || kotlin.math.abs((wall-lastWall)-(now-lastElapsed))>2000)
         if(signature!=nextSignature || paused!=wasPaused || discontinuity) {
             if(lastSettings!=null) flush(lastSettings!!,lastWall.takeIf { it>0 } ?: wall,lastElapsed.takeIf { it>0 } ?: now)
-            signature=nextSignature; segment++; sampler.reset(); drain.reset(); due.clear(); sendDue.clear()
+            if(signature!=nextSignature) { io.recheck(); pendingSlowChecks.addAll(listOf("wear","passport")) }
+            signature=nextSignature; segment++; sampler.reset(); drain.reset(); io.reset(); due.clear(); sendDue.clear()
             startWall=wall; startElapsed=now
             app.costs.drain(); app.costs.runtime(now)
         }
@@ -85,28 +119,34 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
         // Context changes split windows so foreground, network and device states remain comparable.
         val nextContext=context(s)
         if(metadata!="{}" && metadata!=nextContext) {
-            flush(s,wall,now); segment++; sampler.reset(); drain.reset(); startWall=wall; startElapsed=now
+            flush(s,wall,now); segment++; sampler.reset(); drain.reset(); io.reset(); startWall=wall; startElapsed=now
         }
         metadata=nextContext
         fun ready(key: String,seconds: Int): Boolean { if(now<(due[key] ?: 0L)) return false; due[key]=now+seconds*1000L; return true }
         val b=s.batterySettings
         val batteryWanted=b.enabled && b.current
         var batteryRead=false
+        if(!batteryWanted) reportBattery(emptyList(),false,wall)
         if(powerGeneration!=app.battery.generation) { powerGeneration=app.battery.generation; due.remove("battery"); drain.reset() }
         if(batteryWanted && ready("battery",b.currentSeconds)) {
             val began=SystemClock.elapsedRealtime()
-            val snapshot=app.battery.current(); batteryRead=true
-            (snapshot.values+drain.update(snapshot,b.currentSeconds*1000L)).forEach { batteryRows+=record(it,"battery",snapshot.wall, snapshot.wall,0) }
+            val snapshot=app.battery.current(b.extended); batteryRead=true
+            reportBattery(snapshot.values,true,snapshot.wall)
+            persist((snapshot.values+drain.update(snapshot,b.currentSeconds*1000L)).map { record(it,"battery",snapshot.wall,snapshot.wall,0) },s)
             app.costs.operation("battery_collector",began,true,snapshot.values.size.toLong())
         }
         for((name,enabled,seconds) in listOf(Triple("wear",b.enabled&&b.wear,b.wearSeconds),Triple("passport",b.enabled&&b.passport,b.passportSeconds))) {
             if(!ready(name,60)) continue
             val previous=slowLast[name]
-            if(enabled && (previous==null || wall<previous || wall-previous>=seconds*1000L)) {
+            if(enabled && (name in pendingSlowChecks || previous==null || wall<previous || wall-previous>=seconds*1000L)) {
                 val began=SystemClock.elapsedRealtime()
                 val values=if(name=="wear") app.battery.wear(b.fallback) else app.battery.passport(b.fallback)
                 val rows=values.map { record(it,"wear",wall,wall,0) }
-                if(persist(rows,s)) { slowLast[name]=wall; app.db.agentDao().schedule(TelemetrySchedule(name,wall)) }
+                if(persist(rows,s)) {
+                    pendingSlowChecks.remove(name)
+                    val scheduleAt=if(values.any { it.status!="AVAILABLE" }) wall-seconds*1000L+minOf(seconds*1000L,900_000L) else wall
+                    slowLast[name]=scheduleAt; app.db.agentDao().schedule(TelemetrySchedule(name,scheduleAt))
+                }
                 app.costs.operation("battery_$name",began,true,values.size.toLong())
             }
         }
@@ -115,9 +155,13 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
             if(ready("fast",self.fast(wall))) {
                 sampler.fast(self.groups,now).forEach(::observe)
                 if(SelfGroup.BATTERY in self.groups && !batteryRead) {
-                    val snapshot=app.battery.current()
+                    val snapshot=app.battery.current(b.extended)
                     (snapshot.values+drain.update(snapshot,self.fast(wall)*1000L)).forEach { batteryRows+=record(it,"self",snapshot.wall,snapshot.wall,0) }
                 }
+            }
+            if(SelfGroup.STORAGE in self.groups && ready("io",self.ioSeconds)) {
+                val ioRows=io.sample(now,self.processIo,self.systemIo,self.flashWear,self.ioSeconds*1000L).map { record(it,"self",wall,wall,0) }
+                if(ioRows.isNotEmpty()) persist(ioRows,s)
             }
             if(ready("medium",self.mediumSeconds)) sampler.medium(self.groups,now).forEach(::observe)
             app.costs.own((Debug.threadCpuTimeNanos()-cpu)/1_000_000.0,(SystemClock.elapsedRealtime()-begin))
@@ -126,7 +170,7 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
         if(now-startElapsed>=self.windowSeconds*1000L || batteryRows.size>=128) flush(s,wall,now)
     }
     private fun observe(r: AgentReading) {
-        val key=r.metric to r.component
+        val key=Triple(r.metric,r.component,r.source)
         if(r.value!=null && r.status=="AVAILABLE") {
             readings.getOrPut(key) { r to MetricAccumulator() }.second.add(r.value)
             missing.remove(key)
@@ -134,7 +178,12 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
         logStatus(r)
     }
     private fun logStatus(r: AgentReading) {
-        val key=r.metric.name+":"+r.source
+        val wall=r.checkedAt ?: System.currentTimeMillis()
+        val row=TelemetryRecord(sessionId=session?.id.orEmpty(),stream=if(r.metric.battery) "battery" else "self",
+            metric=r.metric.name,component=r.component,time=wall,start=wall,durationMs=0,segment=segment,
+            value=r.value,text=r.text,status=r.status,reason=r.reason,source=r.source,quality=r.quality,metadata=JSONObject(metadata).put("source.checked_at",r.checkedAt ?: wall).toString())
+        probes.value=probes.value.filterNot { it.metric==row.metric && it.component==row.component }+row
+        val key=r.metric.name+":"+r.source+":"+r.component
         val value=r.status+":"+r.reason
         if(statuses.put(key,value)!=value) app.logs.event("telemetry_source",diagnostic=true,probeMetric=r.metric.wire,probeStatus="${r.source}:$value")
     }
@@ -142,7 +191,7 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
         logStatus(r)
         return TelemetryRecord(sessionId=session!!.id,stream=stream,metric=r.metric.name,component=r.component,time=wall,start=from,
             durationMs=duration,segment=segment,value=r.value,low=r.value,high=r.value,count=if(r.value==null) 0 else 1,
-            text=r.text,status=r.status,reason=r.reason,source=r.source,quality=r.quality,metadata=metadata)
+            text=r.text,status=r.status,reason=r.reason,source=r.source,quality=r.quality,metadata=JSONObject(metadata).put("source.checked_at",r.checkedAt ?: wall).toString())
     }
     suspend fun stop() {
         if(session==null) return

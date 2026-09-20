@@ -125,6 +125,7 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
                     if (page.context == HelpContext.DIAGNOSTICS) item {
                         if (report == null) Text(stringResource(R.string.help_no_check)) else SourceHelpSummary(report)
                     }
+                    item { Text(stringResource(R.string.reading_help)) }
                     items(metricHelp(metric).sections, key = { it.title }) { section ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(stringResource(section.title), Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)

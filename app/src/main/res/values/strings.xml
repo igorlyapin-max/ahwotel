@@ -167,4 +167,21 @@
     <string name="resume_guard_write_failed">Automatic resumption is blocked in this process, but the block could not be saved. If you requested Stop, collection is stopped now; the block after a restart is not confirmed. Restore storage access and press Start then Stop again.</string>
     <string name="resume_state_write_failed">The resumption state could not be updated in the database. Collection stops when requested; automatic resumption remains blocked by the saved safeguard. See the diagnostic log.</string>
     <string name="resume_change_incomplete">Automatic resumption is blocked after an update or an incomplete change. Start a new continuous session explicitly to enable it again.</string>
+    <string name="deployment_profile">Deployment profile</string>
+    <string name="deployment_profile_hint">Portable JSON contains collection, retention, OEM, diagnostics and OTLP settings. It excludes device identity, language, history, queue, credentials and temporary debug expiry. Export uses auth mode None and desired state Stopped.</string>
+    <string name="profile_id">Profile ID</string>
+    <string name="profile_revision">Revision</string>
+    <string name="export_profile">Export profile</string>
+    <string name="import_profile">Import profile</string>
+    <string name="apply_profile">Apply profile</string>
+    <string name="cancel">Cancel</string>
+    <string name="profile_import_confirmation">Apply profile %1$s? Collector changes may clear the pending upload queue. Local history and this device ID are retained.</string>
+    <string name="profile_changed_sections">Changed sections: %1$s</string>
+    <string name="profile_no_changes">none</string>
+    <string name="profile_exported">Profile exported</string>
+    <string name="profile_imported">Profile imported</string>
+    <string name="profile_export_failed">Profile export failed. Check profile ID and revision.</string>
+    <string name="profile_import_failed">Profile import failed. The existing configuration was not changed.</string>
+    <string name="managed_mode_hint">Managed mode · profile %1$s · revision %2$d</string>
+    <string name="managed_read_only">Managed by the organization. Settings and collection controls are read-only; interface language remains available.</string>
 </resources>

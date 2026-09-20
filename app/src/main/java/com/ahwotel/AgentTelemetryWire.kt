@@ -27,7 +27,7 @@ object AgentTelemetryWire {
         }
         val metadata=JSONObject(current.metadata)
         val attributes=Attributes.builder()
-        metadata.keys().forEach { k -> attributes.put(k,metadata.get(k).toString()) }
+        metadata.keys().forEach { k -> if(k!="source.checked_at") attributes.put(k,metadata.get(k).toString()) }
         val provider=SdkMeterProvider.builder().setResource(Resource.create(attributes.build())).setClock(object: Clock {
             override fun now()=current.time*1_000_000
             override fun nanoTime()=System.nanoTime()
@@ -35,7 +35,7 @@ object AgentTelemetryWire {
         try {
             val meter=provider.get("com.ahwotel.agent_telemetry")
             fun attrs()=Attributes.builder().put("monitoring.session.id",current.sessionId).put("stream",current.stream)
-                .put("measurement.scope",if(AgentMetric.valueOf(current.metric).battery) "device" else "agent_process")
+                .put("measurement.scope",AgentMetric.valueOf(current.metric).scope)
                 .put("source",current.source).put("status",current.status).put("reason",current.reason)
                 .put("quality",current.quality).put("component",current.component).put("window.start",current.start)
                 .put("window.duration_ms",current.durationMs).put("segment",current.segment.toLong())

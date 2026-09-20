@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ahwotel.local/schemas/deployment-profile-v1.json",
+  "title": "AHWOTel deployment profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profileId", "revision", "desiredState", "auth", "settings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profileId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+    "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "desiredState": { "enum": ["running", "stopped"] },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": { "mode": { "const": "none" } }
+    },
+    "settings": { "$ref": "#/$defs/settings" }
+  },
+  "$defs": {
+    "numberTriple": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["batterySettings", "selfTelemetry", "monitoringEnabled", "uploadIntervalSeconds", "backendEnvironment", "oem", "intervalMs", "durationSeconds", "maxDurationSeconds", "continuous", "collectScreenOff", "resumeOnBoot", "resumeOnOpen", "indirectCpu", "enabled", "retentionDays", "storageMiB", "otlpEnabled", "endpoint", "allowHttp", "queueHours", "queueMiB", "sotiEnabled", "diagnostic", "fileLogging", "thresholds"],
+      "properties": {
+        "monitoringEnabled": { "type": "boolean" },
+        "uploadIntervalSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
+        "backendEnvironment": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+        "intervalMs": { "enum": [1000, 2000, 5000, 10000, 30000, 60000] },
+        "durationSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
+        "maxDurationSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
+        "continuous": { "type": "boolean" },
+        "collectScreenOff": { "type": "boolean" },
+        "resumeOnBoot": { "type": "boolean" },
+        "resumeOnOpen": { "type": "boolean" },
+        "indirectCpu": { "type": "boolean" },
+        "enabled": { "type": "array", "uniqueItems": true, "items": { "enum": ["MEMORY", "CPU", "STORAGE", "THERMAL", "BATTERY"] } },
+        "retentionDays": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "storageMiB": { "type": "integer", "minimum": 64, "maximum": 4096 },
+        "otlpEnabled": { "type": "boolean" },
+        "endpoint": { "type": "string" },
+        "allowHttp": { "type": "boolean" },
+        "queueHours": { "type": "integer", "minimum": 1, "maximum": 720 },
+        "queueMiB": { "type": "integer", "minimum": 1 },
+        "sotiEnabled": { "type": "boolean" },
+        "diagnostic": { "enum": ["OFF", "BASIC", "VERBOSE"] },
+        "fileLogging": { "type": "boolean" },
+        "batterySettings": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "current", "wear", "passport", "fallback", "currentSeconds", "wearSeconds", "passportSeconds", "uploadSeconds", "wearUploadSeconds", "extended"],
+          "properties": {
+            "enabled": { "type": "boolean" }, "current": { "type": "boolean" }, "wear": { "type": "boolean" }, "passport": { "type": "boolean" }, "fallback": { "type": "boolean" }, "extended": { "type": "boolean" },
+            "currentSeconds": { "type": "integer", "minimum": 15, "maximum": 3600 },
+            "wearSeconds": { "type": "integer", "minimum": 3600, "maximum": 604800 },
+            "passportSeconds": { "type": "integer", "minimum": 86400, "maximum": 2592000 },
+            "uploadSeconds": { "type": "integer", "minimum": 300, "maximum": 604800 },
+            "wearUploadSeconds": { "type": "integer", "minimum": 300, "maximum": 604800 }
+          }
+        },
+        "selfTelemetry": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "groups", "fastSeconds", "mediumSeconds", "slowSeconds", "uploadSeconds", "windowSeconds", "limitMiB", "warningSeconds", "criticalSeconds", "processIo", "systemIo", "flashWear", "ioSeconds"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "groups": { "type": "array", "uniqueItems": true, "items": { "enum": ["CPU", "MEMORY", "NETWORK", "RUNTIME", "STORAGE", "TASKS", "BATTERY"] } },
+            "fastSeconds": { "type": "integer", "minimum": 15, "maximum": 3600 },
+            "mediumSeconds": { "type": "integer", "minimum": 60, "maximum": 86400 },
+            "slowSeconds": { "type": "integer", "minimum": 60, "maximum": 86400 },
+            "uploadSeconds": { "type": "integer", "minimum": 300, "maximum": 604800 },
+            "windowSeconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+            "limitMiB": { "type": "integer", "minimum": 10, "maximum": 50 },
+            "warningSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+            "criticalSeconds": { "type": "integer", "minimum": 2, "maximum": 7200 },
+            "processIo": { "type": "boolean" }, "systemIo": { "type": "boolean" }, "flashWear": { "type": "boolean" },
+            "ioSeconds": { "type": "integer", "minimum": 15, "maximum": 3600 }
+          }
+        },
+        "oem": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "knox", "profile", "categories", "intervals"],
+          "properties": {
+            "enabled": { "type": "boolean" }, "knox": { "type": "boolean" },
+            "profile": { "enum": ["balanced", "custom"] },
+            "categories": { "type": "array", "uniqueItems": true, "items": { "enum": ["DEVICE", "SECURITY", "INVENTORY", "NETWORK", "BATTERY", "RESOURCES", "POLICY"] } },
+            "intervals": {
+              "type": "object", "additionalProperties": false,
+              "required": ["DEVICE", "SECURITY", "INVENTORY", "NETWORK", "BATTERY", "RESOURCES", "POLICY"],
+              "properties": {
+                "DEVICE": { "type": "integer", "minimum": 3600, "maximum": 86400 }, "INVENTORY": { "type": "integer", "minimum": 3600, "maximum": 86400 },
+                "SECURITY": { "type": "integer", "minimum": 15, "maximum": 86400 }, "NETWORK": { "type": "integer", "minimum": 15, "maximum": 86400 },
+                "BATTERY": { "type": "integer", "minimum": 15, "maximum": 86400 }, "RESOURCES": { "type": "integer", "minimum": 15, "maximum": 86400 },
+                "POLICY": { "type": "integer", "minimum": 15, "maximum": 86400 }
+              }
+            }
+          }
+        },
+        "thresholds": {
+          "type": "object", "additionalProperties": false,
+          "required": ["cpu", "memory", "storage", "thermal", "raiseSeconds", "recoverSeconds"],
+          "properties": {
+            "cpu": { "$ref": "#/$defs/numberTriple" }, "memory": { "$ref": "#/$defs/numberTriple" },
+            "storage": { "$ref": "#/$defs/numberTriple" }, "thermal": { "$ref": "#/$defs/numberTriple" },
+            "raiseSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+            "recoverSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@
 
 Готовая презентация с иллюстрациями: [PowerPoint (.pptx)](docs/AHWOTel-Project-Overview.pptx) · [PDF для просмотра](docs/AHWOTel-Project-Overview.pdf). Текст и схемы редактируются, заметки докладчика включены в PPTX.
 
-Текущая Git-поставка — **00.00.00.03**, `versionCode=14`, Room **4**. Добавлены [лёгкий стенд Collector → Prometheus → Grafana](deploy/otel-lab/README.md), HTTP по явному разрешению в APK (auth None), EN/RU dashboards и исправления review: срок Verbose, восстановление настроек с недопустимым портом, точность временных границ и разделение источников в графиках, подробная справка. Состав и проверки: [VALIDATION-00.00.00.03.md](docs/VALIDATION-00.00.00.03.md). На Samsung проверен и установлен функционально эквивалентный code13; code14 меняет версию поставки. Контейнеры стенда собираются локально; проверенная CI/registry-поставка пока не реализована.
+Текущая Git-поставка — **00.00.00.05**, `versionCode=21`, Room **5**. Добавлены переносимые deployment profiles, управляемая read-only политика MDM, расширенные Battery/Storage/CPU/IO показатели, сворачиваемые недоступные группы и навигация непосредственно на исторических графиках. Профили не содержат идентификатор устройства, историю, очередь и секреты; правила импорта, ревизий и будущего mTLS описаны в [docs/deployment-profile.md](docs/deployment-profile.md). Функциональные сценарии проверены acceptance-тестами на Redmi до финального изменения только метаданных версии. Контейнеры локального OTEL-стенда остаются `unverified-local`; проверенная CI/registry-поставка пока не реализована.
 
 Предыдущая Git-поставка — **00.00.00.02**, `versionCode=11`, Room **4**. Включает OEM/Knox, графики с осями, исправленный таймер, независимые Battery/Self Telemetry и исправления review. При установке на Samsung история и настройки сохранены; непрерывный сбор возобновлён новой сессией. На устройстве прошли 20 отдельных native-сценариев, включая OTLP с локальным HTTPS mock server. После подключения Wi-Fi часы сменились с 2018 на 2026 год и старые записи удалились по retention; резервные копии сохранены на компьютере. Результаты: [VALIDATION-samsung-code11.md](docs/VALIDATION-samsung-code11.md). Состав Git-поставки: [VALIDATION-00.00.00.02.md](docs/VALIDATION-00.00.00.02.md).
 
@@ -95,6 +95,10 @@ UUID установки можно заменить корпоративным `
 ## Команды SOTI — выключены по умолчанию
 
 Включить Settings → SOTI commands. **Авторизация команд в MVP отсутствует:** другие локальные приложения могут отправлять explicit broadcasts. Receiver недоступен до включения. Проверка через `adb` не подтверждает доставку SOTI enrollment.
+
+## Переносимые профили и MDM
+
+Settings → Deployment profile экспортирует и импортирует версионированный JSON без `deviceId`, языка, истории, очереди и секретов. Android managed configurations могут применить тот же JSON как устойчивую read-only политику с явными действиями `apply` и `release`. Формат, схема, правила ревизий и граница будущего mTLS описаны в [docs/deployment-profile.md](docs/deployment-profile.md).
 
 ```bash
 ./scripts/adb.sh shell am broadcast -n com.ahwotel/.SotiCommandReceiver \

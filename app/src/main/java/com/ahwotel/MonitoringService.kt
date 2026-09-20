@@ -11,6 +11,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
+enum class ActionOrigin { USER, POLICY, RESUME, SOTI }
+
 class MonitoringService : Service() {
     private val app get() = application as MonitorApp
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -45,12 +47,23 @@ class MonitoringService : Service() {
         scope.launch {
             try {
                 app.ready.await()
+                val origin = intent?.getStringExtra("actionOrigin")?.let(ActionOrigin::valueOf) ?: ActionOrigin.USER
+                if (intent?.action == REFRESH_POLICY) {
+                    refreshNotification()
+                    return@launch
+                }
                 if (intent?.action == STOP) {
+                    if (app.managed.active.value && origin != ActionOrigin.POLICY) {
+                        app.logs.event("managed_action_blocked", error = true)
+                        if (active == null) stopSelf()
+                        return@launch
+                    }
                     val id = intent.getStringExtra("sessionId")
                     app.mutex.withLock {
                         if (id != null && id == active) {
-                            if (app.requestSessionStopLocked(id, "manual_stop")) job?.cancel()
-                            app.persistResumeStopLocked("manual_stop")
+                            val reason = if (origin == ActionOrigin.POLICY) "managed_policy" else "manual_stop"
+                            if (app.requestSessionStopLocked(id, reason)) job?.cancel()
+                            app.persistResumeStopLocked(reason)
                         }
                         else app.logs.event("stop_session_mismatch", error = true)
                         if (active == null) stopSelf()
@@ -60,19 +73,34 @@ class MonitoringService : Service() {
                 app.mutex.withLock {
                     val trigger = if (intent == null) ResumeTrigger.PROCESS else
                         intent.getStringExtra("resumeTrigger")?.let { ResumeTrigger.valueOf(it) }
+                    val effectiveOrigin = if (trigger != null) ActionOrigin.RESUME else origin
+                    if (app.managed.active.value && effectiveOrigin !in setOf(ActionOrigin.POLICY, ActionOrigin.RESUME)) {
+                        app.logs.event("managed_action_blocked", error = true)
+                        if (active == null) stopSelf()
+                        return@withLock
+                    }
                     if (active != null) { app.logs.event("start_conflict", error = true); return@withLock }
                     val previous = app.db.resumeDao().get() ?: ResumeRow()
                     val request = if (trigger != null) {
-                        val rejection = ResumePolicy.rejection(previous, app.settings.value, trigger, app.resumeGuard.blocked.value)
+                        val desired = app.managed.desiredState.value
+                        val rejection = if (app.managed.active.value && desired == DesiredCollectionState.STOPPED) "managed_stopped"
+                            else if (app.managed.active.value && desired == DesiredCollectionState.RUNNING) null
+                            else ResumePolicy.rejection(previous, app.settings.value, trigger, app.resumeGuard.blocked.value)
                         if (rejection != null) {
-                            app.db.resumeDao().put(previous.copy(armed = previous.armed && app.settings.value.monitoringEnabled,
+                            app.db.resumeDao().put(previous.copy(armed = false,
                                 trigger = trigger.name.lowercase(), result = rejection))
                             stopSelf(); return@withLock
                         }
-                        val saved = SettingsCodec.decode(previous.configuration)
-                        check(saved.continuous)
-                        StartRequest(UUID.randomUUID().toString(), true, saved.durationSeconds, saved.intervalMs,
-                            saved.enabled, "resume_" + trigger.name.lowercase()).also { require(it.valid(app.settings.value)) }
+                        if (app.managed.active.value) {
+                            val current = app.settings.value
+                            StartRequest(UUID.randomUUID().toString(), true, current.durationSeconds, current.intervalMs,
+                                current.enabled, "managed_policy").also { require(it.valid(current)) }
+                        } else {
+                            val saved = SettingsCodec.decode(previous.configuration)
+                            check(saved.continuous)
+                            StartRequest(UUID.randomUUID().toString(), true, saved.durationSeconds, saved.intervalMs,
+                                saved.enabled, "resume_" + trigger.name.lowercase()).also { require(it.valid(app.settings.value)) }
+                        }
                     } else parse(intent, app.settings.value)
                     if (app.db.dao().session(request.id) != null) {
                         app.logs.event("start_duplicate")
@@ -121,7 +149,7 @@ class MonitoringService : Service() {
     }
 
     private suspend fun runSession(session: SessionRow, snapshot: Settings, start: Long) {
-        val collectors = Collectors(this, snapshot.copy(enabled = snapshot.enabled - CollectorKind.BATTERY), app.sources)
+        val collectors = Collectors(this, snapshot, app.sources, separateBattery=true)
         val probe = if (CollectorKind.CPU in snapshot.enabled && snapshot.indirectCpu) CpuProbe(snapshot.intervalMs) else null
         app.sources.beginCheck()
         var checkGeneration = app.sourceCheckGeneration.get()
@@ -159,7 +187,7 @@ class MonitoringService : Service() {
                 }
                 if (checkGeneration != app.sourceCheckGeneration.get()) {
                     checkGeneration = app.sourceCheckGeneration.get()
-                    collectors.recheck(); probe?.recheck(); app.sources.beginCheck(); next = now
+                    collectors.recheck(); probe?.recheck(); app.agentTelemetry.recheck(); app.sources.beginCheck(); next = now
                     app.logs.event("source_check_started", diagnostic = true)
                 }
                 app.agentTelemetry.tick(paused, now)
@@ -270,10 +298,12 @@ class MonitoringService : Service() {
             setLocale(java.util.Locale.forLanguageTag(app.settings.value.language))
         })
         val stop = Intent(this, MonitoringService::class.java).setAction(STOP).putExtra("sessionId", active)
-        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_monitor)
+        val builder = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_monitor)
             .setContentTitle(localized.getString(R.string.app_name)).setContentText(localized.getString(R.string.notification_text))
             .setOngoing(true).setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
-            .addAction(0, localized.getString(R.string.stop), PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build()
+        if (!app.managed.active.value) builder.addAction(0, localized.getString(R.string.stop),
+            PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        return builder.build()
     }
     private fun refreshNotification() {
         if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -289,10 +319,11 @@ class MonitoringService : Service() {
     companion object {
         fun resume(context: Context, trigger: ResumeTrigger) {
             ContextCompat.startForegroundService(context, Intent(context, MonitoringService::class.java)
-                .putExtra("resumeTrigger", trigger.name))
+                .putExtra("resumeTrigger", trigger.name).putExtra("actionOrigin", ActionOrigin.RESUME.name))
         }
         const val START = "com.ahwotel.START"
         const val STOP = "com.ahwotel.STOP"
+        const val REFRESH_POLICY = "com.ahwotel.REFRESH_POLICY"
         const val CHANNEL = "monitoring"
         fun parse(intent: Intent?, settings: Settings): StartRequest {
             require(settings.monitoringEnabled)
@@ -310,15 +341,21 @@ class MonitoringService : Service() {
                 intent.getLongExtra("samplingIntervalMs", settings.intervalMs), metrics,
                 intent.getStringExtra("reason") ?: "").also { require(it.valid(settings)) }
         }
-        fun start(context: Context, request: StartRequest) {
+        fun start(context: Context, request: StartRequest, origin: ActionOrigin = ActionOrigin.USER) {
             val intent = Intent(context, MonitoringService::class.java).setAction(START)
                 .putExtra("sessionId", request.id).putExtra("continuous", request.continuous)
                 .putExtra("durationSeconds", request.durationSeconds).putExtra("samplingIntervalMs", request.intervalMs)
                 .putExtra("metrics", request.metrics.joinToString(",") { it.name }).putExtra("reason", request.reason)
+                .putExtra("actionOrigin", origin.name)
             ContextCompat.startForegroundService(context, intent)
         }
-        fun stop(context: Context, id: String) {
-            context.startService(Intent(context, MonitoringService::class.java).setAction(STOP).putExtra("sessionId", id))
+        fun stop(context: Context, id: String, origin: ActionOrigin = ActionOrigin.USER) {
+            context.startService(Intent(context, MonitoringService::class.java).setAction(STOP)
+                .putExtra("sessionId", id).putExtra("actionOrigin", origin.name))
+        }
+        fun refreshPolicy(context: Context) {
+            context.startService(Intent(context, MonitoringService::class.java).setAction(REFRESH_POLICY)
+                .putExtra("actionOrigin", ActionOrigin.POLICY.name))
         }
     }
 }
@@ -331,6 +368,7 @@ class SotiCommandReceiver : BroadcastReceiver() {
             try {
                 app.ready.await()
                 if (!app.settings.value.sotiEnabled) { app.logs.event("soti_disabled"); pending.resultCode = 403; return@launch }
+                if (app.managed.active.value) { app.logs.event("managed_action_blocked", error = true); pending.resultCode = 403; return@launch }
                 app.logs.event("soti_command_received")
                 require(intent.getStringExtra("sessionId") != null)
                 when (intent.action) {
@@ -340,12 +378,12 @@ class SotiCommandReceiver : BroadcastReceiver() {
                         when {
                             existing != null -> { app.logs.event("start_duplicate"); pending.resultCode = 200 }
                             app.state.value.sessionId != null -> { app.logs.event("start_conflict"); pending.resultCode = 409 }
-                            else -> { MonitoringService.start(context, request); pending.resultCode = 202 }
+                            else -> { MonitoringService.start(context, request, ActionOrigin.SOTI); pending.resultCode = 202 }
                         }
                     }
                     MonitoringService.STOP -> {
                         val id = intent.getStringExtra("sessionId")!!
-                        if (app.state.value.sessionId == id) { MonitoringService.stop(context, id); pending.resultCode = 202 }
+                        if (app.state.value.sessionId == id) { MonitoringService.stop(context, id, ActionOrigin.SOTI); pending.resultCode = 202 }
                         else { app.logs.event("stop_session_mismatch", error = true); pending.resultCode = 409 }
                     }
                     else -> { app.logs.event("soti_invalid_command", error = true); pending.resultCode = 400 }

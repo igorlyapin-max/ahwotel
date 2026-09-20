@@ -167,4 +167,21 @@
     <string name="resume_guard_write_failed">Автовозобновление заблокировано в этом процессе, но сохранить запрет не удалось. Если нажата кнопка «Остановить», сбор сейчас остановлен; запрет после перезагрузки не подтверждён. Восстановите доступ к хранилищу и снова нажмите «Начать сбор», затем «Остановить».</string>
     <string name="resume_state_write_failed">Не удалось обновить состояние восстановления в базе. По запросу сбор останавливается; автовозобновление запрещено сохранённым предохранителем. См. журнал диагностики.</string>
     <string name="resume_change_incomplete">Автовозобновление запрещено после обновления или незавершённого изменения. Явно начните новую непрерывную сессию, чтобы разрешить его снова.</string>
+    <string name="deployment_profile">Профиль развёртывания</string>
+    <string name="deployment_profile_hint">Переносимый JSON содержит настройки сбора, хранения, OEM, диагностики и OTLP. Идентификатор устройства, язык, история, очередь, учётные данные и срок временной диагностики не экспортируются. При экспорте задаются auth None и состояние Stopped.</string>
+    <string name="profile_id">Идентификатор профиля</string>
+    <string name="profile_revision">Ревизия</string>
+    <string name="export_profile">Экспортировать профиль</string>
+    <string name="import_profile">Импортировать профиль</string>
+    <string name="apply_profile">Применить профиль</string>
+    <string name="cancel">Отмена</string>
+    <string name="profile_import_confirmation">Применить профиль %1$s? Изменение коллектора может очистить очередь отправки. Локальная история и идентификатор этого устройства сохранятся.</string>
+    <string name="profile_changed_sections">Изменяемые разделы: %1$s</string>
+    <string name="profile_no_changes">нет</string>
+    <string name="profile_exported">Профиль экспортирован</string>
+    <string name="profile_imported">Профиль импортирован</string>
+    <string name="profile_export_failed">Не удалось экспортировать профиль. Проверьте идентификатор и ревизию.</string>
+    <string name="profile_import_failed">Не удалось импортировать профиль. Текущая конфигурация не изменена.</string>
+    <string name="managed_mode_hint">Управляемый режим · профиль %1$s · ревизия %2$d</string>
+    <string name="managed_read_only">Управляется организацией. Настройки и управление сбором доступны только для просмотра; язык интерфейса можно изменить.</string>
 </resources>

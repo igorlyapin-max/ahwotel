@@ -8,7 +8,7 @@ import java.io.File
 /** An unavailable measurement always carries a reason; numeric zero is never a capability sentinel. */
 data class AgentReading(val metric: AgentMetric, val value: Double? = null, val text: String? = null,
     val source: String = "android_api", val status: String = "AVAILABLE", val reason: String = "NONE",
-    val quality: String = "MEASURED", val component: String = "") {
+    val quality: String = "MEASURED", val component: String = "", val checkedAt: Long? = null) {
     companion object {
         fun missing(metric: AgentMetric, reason: String, source: String = "android_api", status: String = "UNSUPPORTED") =
             AgentReading(metric, source = source, status = status, reason = reason)
@@ -28,9 +28,9 @@ class BatteryTelemetry(private val context: Context) {
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
-    @Synchronized fun current(): BatterySnapshot {
+    @Synchronized fun current(extended: Boolean = (context.applicationContext as? MonitorApp)?.settings?.value?.batterySettings?.extended ?: true): BatterySnapshot {
         val now = SystemClock.elapsedRealtime()
-        cached?.takeIf { now - it.elapsed in 0..999 }?.let { return it }
+        cached?.takeIf { now - it.elapsed in 0..999 && (it.values.any { r -> r.metric==AgentMetric.ENERGY })==extended }?.let { return it }
         val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val bm = context.getSystemService(BatteryManager::class.java)
         fun extra(key: String) = intent?.takeIf { it.hasExtra(key) }?.getIntExtra(key, -1)
@@ -43,7 +43,7 @@ class BatteryTelemetry(private val context: Context) {
         val rawCurrent = runCatching { bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) }.getOrNull()
         // This firmware was observed to expose mA through an API specified in uA. Do not guess a multiplier.
         val unknownCurrentUnits = Build.MANUFACTURER.equals("samsung", true) && Build.MODEL == "SM-J260F"
-        val values = listOf(
+        val values = mutableListOf(
             reading(AgentMetric.LEVEL, if (level != null && scale != null && scale > 0 && level in 0..scale) 100.0 * level / scale else null),
             reading(AgentMetric.TEMP, extra(BatteryManager.EXTRA_TEMPERATURE)?.takeIf { it in -500..1000 }?.div(10.0)),
             reading(AgentMetric.VOLTAGE, extra(BatteryManager.EXTRA_VOLTAGE)?.takeIf { it > 0 }?.div(1000.0)),
@@ -56,6 +56,24 @@ class BatteryTelemetry(private val context: Context) {
             if (unknownCurrentUnits) AgentReading.missing(AgentMetric.CURRENT, "UNVERIFIED_UNITS", status = "UNAVAILABLE") else
                 reading(AgentMetric.CURRENT, rawCurrent?.takeIf { it != Int.MIN_VALUE }?.toDouble())
         )
+        if (extended) {
+            fun property(m: AgentMetric, id: Int, signed: Boolean = false): AgentReading = try {
+                val v = if(m==AgentMetric.ENERGY) bm.getLongProperty(id) else bm.getIntProperty(id).toLong()
+                if(v==Long.MIN_VALUE || v==Int.MIN_VALUE.toLong()) AgentReading.missing(m,"UNSUPPORTED_COUNTER")
+                else if(!signed && v<0) AgentReading.missing(m,"INVALID_VALUE",status="UNAVAILABLE")
+                else AgentReading(m,v.toDouble())
+            } catch(e: SecurityException) { AgentReading.missing(m,"PERMISSION_DENIED",status="PERMISSION_DENIED") }
+            catch(_: Exception) { AgentReading.missing(m,"READ_FAILED",status="ERROR") }
+            values += if(unknownCurrentUnits) AgentReading.missing(AgentMetric.CURRENT_AVERAGE,"UNVERIFIED_UNITS",status="UNAVAILABLE")
+                else property(AgentMetric.CURRENT_AVERAGE,BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE,true)
+            values += property(AgentMetric.ENERGY,BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER)
+            values += if(Build.VERSION.SDK_INT>=28) reading(AgentMetric.CHARGE_TIME,
+                runCatching { bm.computeChargeTimeRemaining() }.getOrNull()?.takeIf { it>=0 }?.toDouble())
+                else AgentReading.missing(AgentMetric.CHARGE_TIME,"API_UNAVAILABLE")
+            values += if(Build.VERSION.SDK_INT>=34) reading(AgentMetric.CHARGING_DETAIL,
+                extra(BatteryManager.EXTRA_CHARGING_STATUS)?.takeIf { it in 1..5 }?.toDouble())
+                else AgentReading.missing(AgentMetric.CHARGING_DETAIL,"API_UNAVAILABLE")
+        }
         return BatterySnapshot(System.currentTimeMillis(), now, values).also { cached = it }
     }
     fun wear(fallback: Boolean): List<AgentReading> {

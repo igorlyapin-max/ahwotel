@@ -22,6 +22,7 @@ data class RuntimeState(val sessionId: String? = null, val paused: Boolean = fal
     val remainingSeconds: Long? = null, val error: String? = null, val mode: SessionMode? = null)
 data class StorageStats(val bytes: Long = 0, val samples: Long = 0, val earliest: Long? = null,
     val queued: Long = 0, val queueBytes: Long = 0, val cleanupReason: String? = null)
+enum class ConfigurationOrigin { USER, MANAGED }
 
 class MonitorApp : Application() {
     val costs = AgentCosts()
@@ -66,7 +67,8 @@ class MonitorApp : Application() {
             override fun onReceive(context: Context, intent: Intent) {
                 scope.launch {
                     ready.await()
-                    mutex.withLock { managed.refresh(); publishSettings(managed.apply(localSettings)) }
+                    runCatching { refreshManagedConfiguration() }
+                        .onFailure { logs.event("managed_collection_pending", error = true) }
                 }
             }
         }, IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -80,9 +82,21 @@ class MonitorApp : Application() {
                 localSettings = initial
                 resumeGuard.restore()
                 managed.refresh()
-                publishSettings(managed.apply(initial))
+                if (managed.active.value) managed.markCurrentProfilePending()
+                val effective = managed.apply(initial)
+                if (managed.active.value) {
+                    localSettings = effective
+                    config.save(effective)
+                }
+                if (!effective.otlpEnabled || effective.endpoint != initial.endpoint) {
+                    sender.cancel()
+                    db.dao().clearOutbox()
+                }
+                publishSettings(effective)
                 db.dao().interrupt()
-                if (!initial.otlpEnabled) db.dao().clearOutbox()
+                if (managed.active.value && managed.desiredState.value == DesiredCollectionState.STOPPED) {
+                    persistResumeStopLocked("managed_stopped")
+                }
                 oem.restore()
                 logs.event("agent_started")
                 if (config.endpointRecovered.first()) logs.event("otlp_disabled_invalid_stored_port", error = true)
@@ -90,6 +104,8 @@ class MonitorApp : Application() {
                 uploads.recover()
                 ready.complete(Unit)
                 maintenance()
+                if (managed.active.value) runCatching { reconcileManagedCollection() }
+                    .onFailure { logs.event("managed_collection_pending", error = true) }
             } catch (_: Exception) {
                 logs.event("initialization_failed", error = true)
                 state.value = RuntimeState(error = "initialization_failed")
@@ -123,7 +139,7 @@ class MonitorApp : Application() {
             if (state.value.sessionId != null) { sourceCheckGeneration.incrementAndGet(); return@withLock }
             checkingSources.value = true
             val s = settings.value
-            val collectors = Collectors(this@MonitorApp, s, sources)
+            val collectors = Collectors(this@MonitorApp, s, sources, separateBattery=true)
             val probe = if (CollectorKind.CPU in s.enabled && s.indirectCpu) CpuProbe(1000) else null
             sources.beginCheck()
             logs.event("source_check_started", diagnostic = true)
@@ -134,6 +150,7 @@ class MonitorApp : Application() {
                 }
                 if (probe != null) withTimeout(5000) { while ((probe.snapshot()?.sequence ?: 0) < 2) delay(100) }
                 recordProbe(probe, s, android.os.SystemClock.elapsedRealtime())
+                agentTelemetry.checkNow()
                 logs.event("source_check_finished", diagnostic = true)
             } finally { probe?.close(); checkingSources.value = false }
         }
@@ -151,9 +168,16 @@ class MonitorApp : Application() {
         sources.record(results)
     }
 
-    suspend fun saveSettings(requested: Settings) = withContext(Dispatchers.IO) {
+    suspend fun saveSettings(requested: Settings, origin: ConfigurationOrigin = ConfigurationOrigin.USER) = withContext(Dispatchers.IO) {
         ready.await()
         val next = requested.withHttpAllowed(requested.allowHttp)
+        if (managed.active.value && origin == ConfigurationOrigin.USER) {
+            val allowed = settings.value.copy(language = next.language)
+            if (next != allowed) {
+                logs.event("managed_action_blocked", error = true)
+                throw IllegalStateException("managed_read_only")
+            }
+        }
         val previousEndpoint = settings.value.endpoint
         if (!next.otlpEnabled || next.endpoint != previousEndpoint) sender.cancel()
         exportGate.withLock { mutex.withLock {
@@ -161,7 +185,9 @@ class MonitorApp : Application() {
             require(next.valid()) { "invalid_configuration" }
             if (old.deviceId != next.deviceId && (state.value.sessionId != null || db.dao().outboxCount() > 0))
                 throw IllegalStateException("identity_busy")
-            val local = managed.keepLocalManagedFields(next, localSettings)
+            val local = if (managed.active.value) {
+                if (origin == ConfigurationOrigin.MANAGED) next else localSettings.copy(language = next.language)
+            } else managed.keepLocalManagedFields(next, localSettings)
             val effective = managed.apply(local)
             // Apply a safety prohibition even when persistence is unavailable.
             if (!effective.monitoringEnabled) publishSettings(effective)
@@ -214,6 +240,90 @@ class MonitorApp : Application() {
         if (!next.otlpEnabled || next.endpoint != previousEndpoint) uploads.cancel()
         maintenance()
         scheduleUpload()
+    }
+
+    suspend fun refreshManagedConfiguration() = withContext(Dispatchers.IO) {
+        if (!managed.refresh()) return@withContext
+        applyManagedTransition()
+    }
+
+    internal suspend fun applyManagedConfiguration(bundle: android.os.Bundle): Boolean = withContext(Dispatchers.IO) {
+        if (!managed.replace(bundle)) return@withContext false
+        applyManagedTransition()
+        true
+    }
+
+    private suspend fun applyManagedTransition() {
+        val before = settings.value
+        val transition = managed.transition
+        if (managed.active.value) managed.markCurrentProfilePending()
+        val requested = if (transition == ManagedTransition.RELEASED) before else managed.apply(localSettings)
+        saveSettings(requested, ConfigurationOrigin.MANAGED)
+        if (managed.active.value) reconcileManagedCollection()
+        else if (transition == ManagedTransition.RELEASED && state.value.sessionId != null) {
+            MonitoringService.refreshPolicy(this@MonitorApp)
+        }
+    }
+
+    fun exportDeploymentProfile(profileId: String, revision: Long): String =
+        DeploymentProfileCodec.encode(settings.value, profileId, revision, DesiredCollectionState.STOPPED)
+
+    suspend fun importDeploymentProfile(raw: String) {
+        if (managed.active.value) {
+            logs.event("managed_action_blocked", error = true)
+            throw IllegalStateException("managed_read_only")
+        }
+        val profile = DeploymentProfileCodec.decode(raw)
+        saveSettings(profile.applyTo(settings.value), ConfigurationOrigin.USER)
+        logs.event("deployment_profile_imported", diagnostic = true)
+    }
+
+    internal suspend fun reconcileManagedCollection() {
+        val profile = managed.currentProfile() ?: return
+        when (profile.desiredState) {
+            DesiredCollectionState.STOPPED -> {
+                persistResumeStopLocked("managed_stopped")
+                state.value.sessionId?.let { id ->
+                    MonitoringService.stop(this, id, ActionOrigin.POLICY)
+                    withTimeout(15_000) { state.filter { it.sessionId == null }.first() }
+                }
+            }
+            DesiredCollectionState.RUNNING -> {
+                val existing = state.value.sessionId
+                if (existing != null && !managedSessionMatches(existing, settings.value)) {
+                    MonitoringService.stop(this, existing, ActionOrigin.POLICY)
+                    withTimeout(15_000) { state.filter { it.sessionId == null }.first() }
+                }
+                if (state.value.sessionId == null) {
+                    val s = settings.value
+                    val id = UUID.randomUUID().toString()
+                    MonitoringService.start(this, StartRequest(id, true, s.durationSeconds, s.intervalMs,
+                        s.enabled, "managed_policy"), ActionOrigin.POLICY)
+                    val started = withTimeout(15_000) {
+                        state.filter { it.sessionId != null || it.error != null }.first()
+                    }
+                    check(started.sessionId != null) { "managed_start_failed" }
+                }
+                check(managedSessionMatches(requireNotNull(state.value.sessionId), settings.value)) {
+                    "managed_session_mismatch"
+                }
+            }
+        }
+        state.value.sessionId?.let { MonitoringService.refreshPolicy(this) }
+        managed.markCurrentProfileApplied()
+        logs.event("managed_collection_reconciled", diagnostic = true)
+    }
+
+    private suspend fun managedSessionMatches(id: String, expected: Settings): Boolean {
+        val row = db.dao().session(id) ?: return false
+        if (!row.continuous || row.reason != "managed_policy") return false
+        val actual = runCatching { SettingsCodec.decode(row.configuration) }.getOrNull() ?: return false
+        return actual.monitoringEnabled && actual.continuous &&
+            actual.intervalMs == expected.intervalMs && actual.durationSeconds == expected.durationSeconds &&
+            actual.enabled == expected.enabled && actual.collectScreenOff == expected.collectScreenOff &&
+            actual.indirectCpu == expected.indirectCpu && actual.batterySettings == expected.batterySettings &&
+            actual.selfTelemetry.copy(debugUntil = 0) == expected.selfTelemetry.copy(debugUntil = 0) &&
+            actual.oem == expected.oem
     }
 
     /** Caller holds mutex. Claim completion before a settings save can modify an ending session. */

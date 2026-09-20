@@ -47,13 +47,13 @@ object AndroidProcReader : ProcReader {
     } catch (_: SecurityException) { throw SourceFailure(SourceReason.PERMISSION_DENIED, Availability.UNSUPPORTED) }
 }
 
-/** Permanent refusals are cached until recheck; transient errors are retried after 30 seconds. */
+/** Refusals are retried after 15 minutes or explicit recheck; transient errors after 30 seconds. */
 class ProcAccess(private val reader: ProcReader = AndroidProcReader) {
     private var failure: SourceFailure? = null
     private var retryAt = 0L
     fun reset() { failure = null; retryAt = 0 }
     fun <T> read(path: String, elapsed: Long, parse: (String) -> T): T {
-        failure?.let { if (it.availability == Availability.UNSUPPORTED || elapsed < retryAt) throw it }
+        failure?.let { if (elapsed < retryAt) throw it }
         try { return parse(reader.read(path)).also { failure = null } }
         catch (e: Exception) {
             val f = when(e) {
@@ -61,7 +61,7 @@ class ProcAccess(private val reader: ProcReader = AndroidProcReader) {
                 is IllegalArgumentException -> SourceFailure(SourceReason.INVALID_FORMAT, Availability.ERROR)
                 else -> SourceFailure(SourceReason.READ_FAILED, Availability.ERROR)
             }
-            failure = f; retryAt = elapsed + 30_000
+            failure = f; retryAt = elapsed + if(f.availability==Availability.UNSUPPORTED) 900_000 else 30_000
             throw f
         }
     }

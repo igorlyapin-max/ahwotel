@@ -1,0 +1,28 @@
+<resources>
+<string name="ext_battery">Дополнительные API батареи</string>
+<string name="ext_process_io">I/O процесса</string>
+<string name="ext_system_io">Системные источники I/O</string>
+<string name="ext_flash">Проверка износа флеш-памяти</string>
+<string name="ext_io_interval">Интервал I/O, секунды</string>
+<string name="ext_unavailable">%1$s · Недоступные показатели (%2$d)</string>
+<string name="ext_expanded">Развёрнуто</string>
+<string name="ext_collapsed">Свёрнуто</string>
+<string name="ext_recheck">Проверить доступность</string>
+<string name="ext_summary">Батарея: последние 24 часа</string>
+<string name="ext_summary_values">Температура: %1$s °C; заряд: %2$s%%</string>
+<string name="ext_summary_time">Наблюдалось: %1$s ч; внешнее питание: %2$s ч; разряд: %3$s ч</string>
+<string name="ext_summary_hint">Длительности учитывают только соседние корректные наблюдения одной сессии и сегмента. Пропуски исключаются. Это не измерение износа батареи.</string>
+<string name="ext_scope_device">Область: устройство</string>
+<string name="ext_scope_process">Область: процесс AHWOTel</string>
+<string name="ext_stale">Последнее наблюдение; может быть устаревшим</string>
+<string name="ext_charge_normal">Обычная зарядка</string>
+<string name="ext_charge_cold">Зарядка ограничена: холод</string>
+<string name="ext_charge_hot">Зарядка ограничена: нагрев</string>
+<string name="ext_charge_life">Зарядка для долговечности</string>
+<string name="ext_charge_adaptive">Адаптивная зарядка</string>
+<string name="ext_flash_range">Израсходовано расчётного ресурса: %1$d–%2$d%%</string>
+<string name="ext_flash_exceeded">Расчётный ресурс превышен</string>
+<string name="ext_flash_normal">Резерв в норме</string>
+<string name="ext_flash_warning">Предупреждение о резерве</string>
+<string name="ext_flash_urgent">Критический остаток резерва</string>
+</resources>

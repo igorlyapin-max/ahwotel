@@ -11,12 +11,12 @@ import android.os.StatFs
 import android.os.SystemClock
 
 class Collectors(private val context: Context, private val settings: Settings,
-    private val registry: SourceRegistry? = null, reader: ProcReader = AndroidProcReader) {
+    private val registry: SourceRegistry? = null, reader: ProcReader = AndroidProcReader, private val separateBattery: Boolean = false) {
     private var previousCpu: CpuTicks? = null
     private val cpuAccess = ProcAccess(reader)
     private var lastHeadroom = Long.MIN_VALUE
     private val windows = (0..3).map { PressureWindow(settings.thresholds) }
-    fun reset() { previousCpu = null; windows.forEach { it.reset() } }
+    fun reset() { lastHeadroom = Long.MIN_VALUE; previousCpu = null; windows.forEach { it.reset() } }
     fun recheck() { reset(); cpuAccess.reset(); lastHeadroom = Long.MIN_VALUE }
 
     fun collect(sessionId: String, time: Long, elapsed: Long, segment: Int, screenOn: Boolean): SampleRow {
@@ -24,6 +24,7 @@ class Collectors(private val context: Context, private val settings: Settings,
         val capabilities = mutableMapOf<String, Availability>()
         val reasons = mutableMapOf<String, SourceReason>()
         fun run(kind: CollectorKind, action: () -> Unit) {
+            if(kind==CollectorKind.BATTERY && separateBattery) return
             if (kind !in settings.enabled) { capabilities[kind.name] = Availability.DISABLED; return }
             val began = SystemClock.elapsedRealtime()
             var successful = false
@@ -67,11 +68,20 @@ class Collectors(private val context: Context, private val settings: Settings,
             if (Build.VERSION.SDK_INT >= 30) {
                 if (lastHeadroom == Long.MIN_VALUE || elapsed - lastHeadroom >= 10000) {
                     lastHeadroom = elapsed
-                    val headroom = power.getThermalHeadroom(0).toDouble()
-                    if (headroom.isFinite()) {
-                        row = row.copy(headroom = headroom, headroomTime = time)
-                        capabilities["HEADROOM"] = Availability.AVAILABLE
-                    } else capabilities["HEADROOM"] = Availability.ERROR
+                    row = row.copy(headroomTime = time)
+                    try {
+                        val headroom = power.getThermalHeadroom(0).toDouble()
+                        if (headroom.isFinite()) {
+                            row = row.copy(headroom = headroom)
+                            capabilities["HEADROOM"] = Availability.AVAILABLE
+                        } else capabilities["HEADROOM"] = Availability.ERROR
+                    } catch (_: SecurityException) {
+                        capabilities["HEADROOM"] = Availability.UNSUPPORTED
+                        reasons["HEADROOM"] = SourceReason.PERMISSION_DENIED
+                    } catch (_: Exception) {
+                        capabilities["HEADROOM"] = Availability.ERROR
+                        reasons["HEADROOM"] = SourceReason.READ_FAILED
+                    }
                 } else capabilities["HEADROOM"] = Availability.WARMING_UP
             } else capabilities["HEADROOM"] = Availability.UNSUPPORTED
         }
@@ -94,7 +104,7 @@ class Collectors(private val context: Context, private val settings: Settings,
         row = row.copy(cpuPressure = evaluated[0], memoryPressure = evaluated[1], storagePressure = evaluated[2],
             thermalPressure = evaluated[3], state = evaluated.filterNotNull().maxOrNull(),
             capabilities = capabilities.entries.joinToString(";") { "${it.key}=${it.value.name}" })
-        val reports = Metric.entries.filterNot { it.isProbe }.map { metric ->
+        val reports = Metric.entries.filterNot { it.isProbe || separateBattery && it.batteryMetric()!=null }.map { metric ->
             val source = when(metric) {
                 Metric.CPU -> SourceId.PROC_STAT
                 Metric.THERMAL -> SourceId.THERMAL_API

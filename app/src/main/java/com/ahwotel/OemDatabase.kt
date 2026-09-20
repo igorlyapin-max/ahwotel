@@ -31,6 +31,14 @@ data class OemEventRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val se
     val time: Long, val provider: String, val subject: String, val kind: String, val before: String?, val after: String?)
 
 @Dao interface OemDao {
+    @Query("SELECT * FROM oem_observations WHERE id IN (SELECT MAX(id) FROM oem_observations WHERE sessionId=:session GROUP BY metric,provider)")
+    fun latestInSession(session: String): Flow<List<OemObservationRow>>
+
+    @Query("SELECT metric, SUM(CASE WHEN status='AVAILABLE' AND (number IS NOT NULL OR text IS NOT NULL) THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN status IN ('UNSUPPORTED','PERMISSION_DENIED') THEN 1 ELSE 0 END) AS refusals, COUNT(*) AS total FROM oem_observations WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY metric")
+    suspend fun presence(from: Long,to: Long,session: String?): List<MetricPresence>
+    @Query("SELECT * FROM oem_observations WHERE id IN (SELECT MAX(id) FROM oem_observations WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY metric,provider)")
+    suspend fun rangeLatest(from: Long,to: Long,session: String?): List<OemObservationRow>
+
     @Insert suspend fun observations(rows: List<OemObservationRow>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun profile(row: OemProfileRow)
     @Insert suspend fun inventory(row: OemInventoryRow)

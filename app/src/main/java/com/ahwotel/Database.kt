@@ -80,6 +80,10 @@ enum class Metric(val column: String, val wire: String, val unit: String) {
 
 @Dao
 interface MonitorDao {
+    @RawQuery suspend fun hasValue(query: SupportSQLiteQuery): Int
+    @Query("SELECT * FROM samples WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY time DESC,id DESC LIMIT 1")
+    suspend fun lastInRange(session: String?, from: Long, to: Long): SampleRow?
+
     @Insert suspend fun start(row: SessionRow)
     @Insert suspend fun sample(row: SampleRow): Long
     @Insert suspend fun enqueue(row: OutboxRow)
@@ -92,6 +96,11 @@ interface MonitorDao {
     @Query("UPDATE sessions SET status='INTERRUPTED', endReason='process_interrupted', endedAt=COALESCE((SELECT MAX(time) FROM samples WHERE samples.sessionId=sessions.id), startedAt) WHERE status='RUNNING'")
     suspend fun interrupt()
     @Query("SELECT * FROM samples ORDER BY id DESC LIMIT 1") fun latest(): Flow<SampleRow?>
+    @Query("SELECT * FROM samples NOT INDEXED WHERE sessionId=:session ORDER BY id DESC LIMIT 1")
+    fun latestInSession(session: String): Flow<SampleRow?>
+    @Query("SELECT * FROM samples NOT INDEXED WHERE sessionId=:session AND (headroomTime IS NOT NULL OR capabilities LIKE '%HEADROOM=ERROR%' OR capabilities LIKE '%HEADROOM=UNSUPPORTED%' OR capabilities LIKE '%HEADROOM=DISABLED%') ORDER BY id DESC LIMIT 1")
+    fun latestHeadroom(session: String): Flow<SampleRow?>
+
     @Query("SELECT * FROM samples WHERE id>:after AND (:session IS NULL OR sessionId=:session) AND time BETWEEN :from AND :to ORDER BY id LIMIT 500")
     suspend fun page(after: Long, session: String?, from: Long, to: Long): List<SampleRow>
     @Query("DELETE FROM samples WHERE time < :cutoff") suspend fun expire(cutoff: Long): Int
@@ -163,7 +172,7 @@ abstract class MonitorDatabase : RoomDatabase() {
 fun chartQuery(metric: Metric, session: String?, from: Long, to: Long, buckets: Int = 240): SimpleSQLiteQuery {
     val width = ((to - from).coerceAtLeast(1) / buckets.coerceIn(10, 1000)).coerceAtLeast(1)
     val col = metric.column // enum only; never user-supplied SQL.
-    val clock = if (metric.isProbe) "probeTime" else "time"
+    val clock = if (metric.isProbe) "probeTime" else if(metric==Metric.HEADROOM) "headroomTime" else "time"
     val segment = if (metric.isProbe) "probeSegment" else "segment"
     return SimpleSQLiteQuery("""SELECT (($clock-?)/?) AS bucket,
         CASE WHEN COUNT(DISTINCT $segment)=1 AND COUNT(DISTINCT sessionId)=1 AND COUNT($col)=COUNT(*) THEN MIN($segment) ELSE -1 END AS segment,

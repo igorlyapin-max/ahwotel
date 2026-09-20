@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="management_action" android:restrictionType="string" android:title="@string/deployment_profile" />
+    <restriction android:key="deployment_profile" android:restrictionType="string" android:title="@string/deployment_profile" />
+    <restriction android:key="profile_id" android:restrictionType="string" android:title="@string/profile_id" />
+    <restriction android:key="profile_revision" android:restrictionType="integer" android:title="@string/profile_revision" />
     <restriction android:key="monitoring_enabled" android:restrictionType="bool" android:title="@string/monitoring" android:defaultValue="true" />
     <restriction android:key="oem_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_enabled" android:defaultValue="false" />
     <restriction android:key="knox_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_knox" android:defaultValue="true" />

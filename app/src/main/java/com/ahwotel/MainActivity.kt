@@ -110,25 +110,33 @@ class MainActivity : AppCompatActivity() {
 
 @Composable fun MonitorScreen(app: MonitorApp) {
     var extraPage by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
-    if (extraPage != null) { AgentTelemetryScreen(app, extraPage == "battery") { extraPage = null }; return }
+    if (extraPage != null) { AgentTelemetryScreen(app, extraPage == "battery", groupFilter=if(extraPage=="storage") "STORAGE" else null) { extraPage = null }; return }
 
     val settings by app.settings.collectAsStateWithLifecycle()
     val state by app.state.collectAsStateWithLifecycle()
+    val managedActive by app.managed.active.collectAsStateWithLifecycle()
     val resumeIssue by app.resumeGuard.issue.collectAsStateWithLifecycle()
-    val latestFlow = remember { app.db.dao().latest() }
-    val latest by latestFlow.collectAsStateWithLifecycle(initialValue = null)
+    val sessions by remember { app.db.dao().sessions() }.collectAsStateWithLifecycle(initialValue=emptyList())
+    val sessionId=state.sessionId ?: sessions.firstOrNull()?.id ?: ""
+    val latest by remember(sessionId) { app.db.dao().latestInSession(sessionId) }.collectAsStateWithLifecycle(initialValue=null)
+    val headroom by remember(sessionId) { app.db.dao().latestHeadroom(sessionId) }.collectAsStateWithLifecycle(initialValue=null)
+    val battery by remember(sessionId) { app.db.agentDao().latestInSession(sessionId) }.collectAsStateWithLifecycle(initialValue=emptyList())
+    val now=measurementClock()
+    val current=latest?.takeIf { it.sessionId==sessionId }
+    val readings=Metric.entries.associateWith { it.reading(current,headroom?.takeIf { it.sessionId==sessionId },battery.filter { it.sessionId==sessionId }) }
     val context = LocalContext.current
     var reason by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val scope = rememberCoroutineScope()
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("monitor_list").padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { PageTitle("AHWOTel", stringResource(R.string.local_first)) }
         resumeIssue?.let { code -> item { Text(stringResource(resumeIssueText(code)), color = MaterialTheme.colorScheme.error) } }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ extraPage = "battery" }) { Text(stringResource(R.string.at_battery_title)) }
             OutlinedButton({ extraPage = "self" }) { Text(stringResource(R.string.at_self_title)) }
         } }
+        item { OutlinedButton({ extraPage="storage" }) { Text(stringResource(R.string.storage)) } }
         item {
             Panel(stringResource(if (state.paused) R.string.paused else if (state.sessionId != null) R.string.running else R.string.idle)) {
                 Text(stringResource(if (settings.otlpEnabled) R.string.export_enabled else R.string.local_mode), color = Accent)
@@ -139,18 +147,20 @@ class MainActivity : AppCompatActivity() {
                         SessionMode.TIMED -> stringResource(R.string.remaining, state.remainingSeconds ?: 0L)
                         null -> stringResource(R.string.session_starting)
                     }, Modifier.testTag("session_timing"))
-                    Button(onClick = { MonitoringService.stop(context, state.sessionId!!) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.stop)) }
+                    if (!managedActive) Button(onClick = { MonitoringService.stop(context, state.sessionId!!) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.stop)) }
                 } else {
-                    OutlinedTextField(reason, { if (it.length <= 256) reason = it }, label = { Text(stringResource(R.string.reason)) }, modifier = Modifier.fillMaxWidth())
-                    Button(onClick = {
-                        if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        try { MonitoringService.start(context, StartRequest(UUID.randomUUID().toString(), settings.continuous,
-                            settings.durationSeconds, settings.intervalMs, settings.enabled, reason)); message = null }
-                        catch (_: Exception) { message = "command_rejected" }
-                    }, enabled = settings.monitoringEnabled, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.start)) }
+                    if (!managedActive) {
+                        OutlinedTextField(reason, { if (it.length <= 256) reason = it }, label = { Text(stringResource(R.string.reason)) }, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = {
+                            if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            try { MonitoringService.start(context, StartRequest(UUID.randomUUID().toString(), settings.continuous,
+                                settings.durationSeconds, settings.intervalMs, settings.enabled, reason)); message = null }
+                            catch (_: Exception) { message = "command_rejected" }
+                        }, enabled = settings.monitoringEnabled, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.start)) }
+                    } else Text(stringResource(R.string.managed_read_only), color = Accent)
                     if (!settings.monitoringEnabled) Text(stringResource(R.string.oem_monitoring_disabled))
                 }
-                Toggle(stringResource(R.string.screen_off), settings.collectScreenOff) { checked ->
+                Toggle(stringResource(R.string.screen_off), settings.collectScreenOff, enabled = !managedActive) { checked ->
                     scope.launch { try { app.saveSettings(settings.copy(collectScreenOff = checked)) } catch (_: Exception) { message = "invalid_configuration" } }
                 }
                 Text(stringResource(R.string.screen_off_hint), style = MaterialTheme.typography.bodySmall)
@@ -166,25 +176,41 @@ class MainActivity : AppCompatActivity() {
                 sample?.let { Text(formatTime(it.time), color = Color(0xFF91A5B5)) }
             }
         }
-        items(listOf(Metric.CPU, Metric.CPU_WAIT, Metric.PROBE_DELAY, Metric.MEMORY_AVAILABLE, Metric.MEMORY_PERCENT, Metric.STORAGE_PERCENT, Metric.THERMAL, Metric.HEADROOM)) { metric ->
-            Panel(metricTitle(metric), help = metric) {
-                val value = latest?.let { metric.value(it) }
-                Text(formatValue(value, metric), style = MaterialTheme.typography.headlineMedium)
-                latest?.capabilities?.let { Text(capabilityText(metric, it), style = MaterialTheme.typography.bodySmall, color = Accent) }
-                if (metric.isProbe) {
-                    Text(stringResource(if (metric == Metric.CPU_WAIT) R.string.cpu_wait_hint else R.string.probe_delay_hint), style = MaterialTheme.typography.bodySmall)
-                    latest?.probeInterval?.let { Text(stringResource(R.string.probe_window, it), style = MaterialTheme.typography.labelSmall) }
+        val displayMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,Metric.MEMORY_AVAILABLE,Metric.MEMORY_PERCENT,Metric.STORAGE_PERCENT,Metric.THERMAL,Metric.HEADROOM,Metric.BATTERY,Metric.TEMPERATURE)
+        displayMetrics.groupBy { it.category() }.forEach { (category,metrics) ->
+            val folded=metrics.filter { it.enabled(settings) && permanentlyUnavailable(readings.getValue(it).status) && readings.getValue(it).value==null }
+            items(metrics-folded) { metric -> MonitorMetricCard(metric,readings.getValue(metric),current,settings,state,now) }
+            if(folded.isNotEmpty()) item {
+                UnavailableSection("monitor_$category",availabilityCategory(category),folded.size) {
+                    folded.forEach { MonitorMetricCard(it,readings.getValue(it),current,settings,state,now) }
                 }
             }
         }
     }
 }
 
+@Composable internal fun MonitorMetricCard(metric: Metric, reading: MetricReading, latest: SampleRow?, settings: Settings, state: RuntimeState, now: Long) {
+    Panel(metricTitle(metric), help=metric) {
+        val enabled=metric.enabled(settings)
+        Text(formatValue(reading.value.takeIf { enabled },metric),Modifier.testTag("metric_value_${metric.name}"),style=MaterialTheme.typography.headlineMedium)
+        Text(agentStatus(if(enabled) reading.status else "DISABLED"),Modifier.testTag("metric_status_${metric.name}"),color=Accent)
+        ReadingLifecycle(reading.time,now,metric.intervalMs(settings),enabled,state)
+        reading.time?.let { Text(formatTime(it),Modifier.testTag("metric_time_${metric.name}")) }
+        if(reading.source.isNotEmpty()) Text(reading.source,style=MaterialTheme.typography.bodySmall)
+        if(reading.reason!="NONE") Text(metricReadingReason(metric,reading.reason),style=MaterialTheme.typography.bodySmall)
+        if(metric.isProbe) {
+            Text(stringResource(if(metric==Metric.CPU_WAIT) R.string.cpu_wait_hint else R.string.probe_delay_hint),style=MaterialTheme.typography.bodySmall)
+            latest?.probeInterval?.let { Text(stringResource(R.string.probe_window,it)) }
+        }
+    }
+}
+
 @Composable fun Toggle(title: String, checked: Boolean, helpGroup: HelpGroup? = null, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    val editing = enabled && LocalSettingsEditingEnabled.current
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f).padding(end = 8.dp))
         helpGroup?.let { HelpGroupButton(it) }
-        Switch(checked, onChange, enabled = enabled, modifier = Modifier.testTag("toggle:$title"))
+        Switch(checked, onChange, enabled = editing, modifier = Modifier.testTag("toggle:$title"))
     }
 }
 
@@ -220,11 +246,7 @@ fun formatValue(value: Double?, metric: Metric): String = if (value == null) "â€
     if (metric.unit == "By") "${formatNumber(value / 1024 / 1024)} MiB" else "${formatNumber(value)} ${if (metric.unit == "1") "" else metric.unit}"
 
 @Composable fun capabilityText(metric: Metric, value: String): String {
-    val key = when (metric) {
-        Metric.CPU -> "CPU"; Metric.CPU_WAIT -> "CPU_WAIT"; Metric.PROBE_DELAY -> "PROBE_DELAY"
-        Metric.MEMORY_AVAILABLE, Metric.MEMORY_PERCENT -> "MEMORY"
-        Metric.STORAGE_PERCENT -> "STORAGE"; Metric.THERMAL -> "THERMAL"; Metric.HEADROOM -> "HEADROOM"; else -> "BATTERY"
-    }
+    val key = metric.capabilityKey()
     val status = value.split(';').find { it.startsWith("$key=") }?.substringAfter('=')
     return stringResource(when(status) {
         "AVAILABLE" -> R.string.available; "UNSUPPORTED" -> R.string.unsupported; "DISABLED" -> R.string.disabled
@@ -234,6 +256,9 @@ fun formatValue(value: Double?, metric: Metric): String = if (value == null) "â€
 @Composable fun errorText(code: String): String = stringResource(when(code) {
     "identity_busy" -> R.string.identity_busy; "invalid_configuration" -> R.string.invalid_configuration
     "session_timing_apply_failed" -> R.string.session_timing_apply_failed
+    "managed_read_only" -> R.string.managed_read_only
+    "profile_import_failed" -> R.string.profile_import_failed
+    "profile_export_failed" -> R.string.profile_export_failed
     "initialization_failed" -> R.string.initialization_failed; "storage_or_collection_failed" -> R.string.storage_or_collection_failed
     "no_collectors" -> R.string.no_collectors
     "soti_start_rejected" -> R.string.start_rejected; else -> R.string.command_rejected

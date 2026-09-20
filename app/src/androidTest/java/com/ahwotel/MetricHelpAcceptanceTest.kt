@@ -44,7 +44,10 @@ class MetricHelpAcceptanceTest {
         ui.onNodeWithTag("help-title").assertTextEquals(title)
         ui.onNodeWithContentDescription("Close help").assertIsDisplayed().assertWidthIsAtLeast(48.dp)
     }
-    private fun close(language: String = "en") { ui.onNodeWithContentDescription(text(R.string.help_close, language)).performClick() }
+    private fun close(language: String = "en") {
+        ui.onNodeWithContentDescription(text(R.string.help_close, language)).performClick()
+        ui.waitUntil(5000) { ui.onAllNodesWithTag("metric-help-sheet").fetchSemanticsNodes().isEmpty() }
+    }
     private fun screenshot(name: String) {
         ui.waitForIdle()
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
@@ -62,7 +65,11 @@ class MetricHelpAcceptanceTest {
         assertTrue(device.takeScreenshot(File(app.filesDir, "help-$name.png")))
     }
     private fun tab(id: Int, language: String = "en") { ui.onNode(hasText(text(id, language)) and hasClickAction()).performClick() }
-    private fun guide() { tab(R.string.diagnostics); ui.onNodeWithText("Metric guide").performClick() }
+    private fun guide() {
+        tab(R.string.diagnostics)
+        mainList().performScrollToNode(hasText("Metric guide"))
+        ui.onNodeWithText("Metric guide").performClick()
+    }
     private fun select(metric: Metric) {
         ui.onNodeWithTag("help-list").performScrollToNode(hasTestTag("help-entry-${metric.name}"))
         ui.onNodeWithTag("help-entry-${metric.name}").performClick()
@@ -117,10 +124,20 @@ class MetricHelpAcceptanceTest {
 
     @Test fun selectedLanguageAndOpenHelpSurviveRecreation() {
         switchLanguage("ru", "en")
+        tab(R.string.monitoring, "ru")
+        val temperatureHelp=text(R.string.help_about,"ru").format(text(R.string.temperature,"ru"))
+        mainList().performScrollToNode(hasContentDescription(temperatureHelp))
+        ui.onNodeWithContentDescription(temperatureHelp).performClick()
+        ui.onNodeWithTag("help-content").performScrollToNode(hasTestTag("help-observation-TEMPERATURE"))
+        ui.onNodeWithTag("help-observation-TEMPERATURE").assertIsDisplayed()
+        ui.onNodeWithText(text(R.string.help_observation_title,"ru")).assertExists()
+        close("ru")
         tab(R.string.diagnostics, "ru")
+        mainList().performScrollToNode(hasText(text(R.string.help_guide, "ru")))
         ui.onNodeWithText(text(R.string.help_guide, "ru")).performClick()
         select(Metric.HEADROOM)
         ui.onNodeWithTag("help-title").assertTextEquals("Тепловой запас")
+        ui.onNodeWithTag("help-content").performScrollToNode(hasText(text(R.string.help_headroom_meaning, "ru")))
         ui.onNodeWithText(text(R.string.help_headroom_meaning, "ru")).assertIsDisplayed()
         screenshot("headroom-ru")
         ui.activityRule.scenario.recreate(); keepAwake()

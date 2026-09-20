@@ -72,6 +72,30 @@ class MetricReadingsTest {
         assertEquals("CPU",Metric.CPU_PRESSURE.capabilityKey())
         assertEquals("STATE",Metric.STATE.capabilityKey())
     }
+    @Test fun monitoringTimestampUsesNewestEnabledMetricWithAValue() {
+        val settings=Settings()
+        val readings=mapOf(
+            Metric.CPU to MetricReading(10.0,1000,"AVAILABLE","proc"),
+            Metric.TEMPERATURE to MetricReading(28.0,3000,"AVAILABLE","android_api"),
+            Metric.BATTERY to MetricReading(null,9000,"ERROR","android_api"),
+        )
+        assertEquals(3000L,latestMonitorMeasurement(readings,settings))
+        assertEquals(1000L,latestMonitorMeasurement(readings,settings.copy(batterySettings=BatterySettings(enabled=false))))
+        assertNull(latestMonitorMeasurement(readings.mapValues { (_,r)->r.copy(value=null) },settings))
+    }
+    @Test fun monitoringGridPairsAcrossCategoriesAndAggregatesUnavailableMetrics() {
+        val readings=monitorMetrics.associateWith { MetricReading(1.0,1000,"AVAILABLE","test") }.toMutableMap()
+        val all=splitMonitorMetrics(readings,Settings())
+        assertEquals(listOf(Metric.STATE,Metric.CPU),all.first.chunked(2).first())
+        assertTrue(all.second.isEmpty())
+
+        readings[Metric.CPU]=MetricReading(status="UNSUPPORTED",source="proc")
+        readings[Metric.BATTERY]=MetricReading(status="PERMISSION_DENIED",source="battery_manager")
+        val split=splitMonitorMetrics(readings,Settings())
+        assertEquals(listOf(Metric.CPU,Metric.BATTERY),split.second)
+        assertFalse(split.first.contains(Metric.CPU));assertFalse(split.first.contains(Metric.BATTERY))
+        assertTrue(split.first.chunked(2).all { it.size in 1..2 })
+    }
     @Test fun databaseSelectsSessionBeforeLatestAndHeadroomHasRealPointsOnly()=runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,MonitorDatabase::class.java).allowMainThreadQueries().build()

@@ -1,9 +1,7 @@
 package com.ahwotel
 
-import androidx.compose.runtime.*
-import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import kotlinx.coroutines.delay
 
 /** Presentation only. Never write held values back to history or export them as new samples. */
 data class MetricReading(val value: Double? = null, val time: Long? = null,
@@ -74,22 +72,6 @@ fun Metric.reading(sample: SampleRow?, headroom: SampleRow?, battery: List<Telem
 }
 fun readingStale(time: Long?, now: Long, intervalMs: Long): Boolean =
     time!=null && (now<time || now-time>intervalMs*2)
-
-@Composable fun measurementClock(): Long {
-    val now by produceState(System.currentTimeMillis()) {
-        while(true) { value=System.currentTimeMillis(); delay(1000) }
-    }
-    return now
-}
-@Composable fun ReadingLifecycle(time: Long?, now: Long, intervalMs: Long, enabled: Boolean, state: RuntimeState,
-    staleAfterMs: Long = intervalMs * 2) {
-    if(!enabled) Text(stringResource(R.string.disabled))
-    else {
-        if(state.paused) Text(stringResource(R.string.paused))
-        else if(state.sessionId==null && time!=null) Text(stringResource(R.string.reading_session_finished))
-        if(time!=null && (now<time || now-time>staleAfterMs)) Text(stringResource(R.string.ext_stale))
-    }
-}
 
 @Composable fun metricReadingReason(metric: Metric, reason: String): String {
     val core=if(metric.batteryMetric()==null) runCatching { SourceReason.valueOf(reason) }.getOrNull() else null

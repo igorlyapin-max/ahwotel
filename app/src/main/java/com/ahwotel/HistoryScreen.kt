@@ -24,6 +24,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.*
 import kotlin.math.abs
 
+private data class HistoryAvailabilityRequest(val session: String?,val from: Long,val to: Long,
+    val sampleRevision: Long,val agentRevision: Long)
+
 @Composable fun HistoryScreen(app: MonitorApp) {
     var extraPage by remember { mutableStateOf<String?>(null) }
     val sessionsFlow = remember { app.db.dao().sessions() }
@@ -33,8 +36,13 @@ import kotlin.math.abs
     val settings by app.settings.collectAsStateWithLifecycle()
     val window = remember { HistoryWindowState() }
     var lastSelection by remember { mutableStateOf<String?>(null) }
-    if (extraPage != null) { AgentTelemetryScreen(app, extraPage == "battery", history=true, session=selected,
-        historyWindow=window, groupFilter=if(extraPage=="storage") "STORAGE" else null) { extraPage = null }; return }
+    if (extraPage != null) {
+        key("history:$extraPage") {
+            AgentTelemetryScreen(app, extraPage == "battery", history=true, session=selected,
+                historyWindow=window, groupFilter=if(extraPage=="storage") "STORAGE" else null) { extraPage = null }
+        }
+        return
+    }
     val sampleUpdate by remember { app.db.dao().latest() }.collectAsStateWithLifecycle(initialValue=null)
     val agentUpdate by remember { app.db.agentDao().latest() }.collectAsStateWithLifecycle(initialValue=emptyList())
     LaunchedEffect(sampleUpdate?.id,agentUpdate,window.atLatest,selected) {
@@ -42,19 +50,21 @@ import kotlin.math.abs
     }
     val from = window.from
     val end = window.end
-    val availability by produceState<Pair<Map<Metric,MetricReading>,Set<Metric>>?>(null,selected,from,end,sampleUpdate,agentUpdate) {
-        value=withContext(Dispatchers.IO) {
-            val agentPresence=app.db.agentDao().presence(from,end,selected)
-            val last=app.db.dao().lastInRange(selected,from,end)
-            val agents=app.db.agentDao().rangeLatest(from,end,selected)
+    var availabilityRetry by remember { mutableIntStateOf(0) }
+    val availabilityRequest=HistoryAvailabilityRequest(selected,from,end,sampleUpdate?.id ?: 0,
+        agentUpdate.maxOfOrNull { it.id } ?: 0)
+    val availabilityLoad=rememberRetainedLoad(selected,availabilityRequest,retryKey=availabilityRetry,load={ target ->
+            val agentPresence=app.db.agentDao().presence(target.from,target.to,target.session)
+            val last=app.db.dao().lastInRange(target.session,target.from,target.to)
+            val agents=app.db.agentDao().rangeLatest(target.from,target.to,target.session)
             Metric.entries.associateWith { it.reading(last,null,agents) } to Metric.entries.filter { m ->
                 if(m.batteryMetric()!=null) agentPresence.any { it.metric==m.batteryMetric()!!.name && (it.valid>0 || it.refusals<it.total) }
                 else app.db.dao().hasValue(androidx.sqlite.db.SimpleSQLiteQuery(
                     "SELECT EXISTS(SELECT 1 FROM samples WHERE time BETWEEN ? AND ? AND (? IS NULL OR sessionId=?) AND ("+m.column+" IS NOT NULL OR (capabilities NOT LIKE ? AND capabilities NOT LIKE ?)))",
-                    arrayOf<Any?>(from,end,selected,selected,"%"+m.capabilityKey()+"=UNSUPPORTED%","%"+m.capabilityKey()+"=PERMISSION_DENIED%")))!=0
+                    arrayOf<Any?>(target.from,target.to,target.session,target.session,"%"+m.capabilityKey()+"=UNSUPPORTED%","%"+m.capabilityKey()+"=PERMISSION_DENIED%")))!=0
             }.toSet()
-        }
-    }
+    },onError={app.logs.event("history_range_load_failed",error=true)})
+    val availability=availabilityLoad.snapshot?.takeIf { it.request==availabilityRequest }?.value
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
@@ -73,6 +83,10 @@ import kotlin.math.abs
     val metrics = listOf(Metric.CPU, Metric.CPU_WAIT, Metric.PROBE_DELAY, Metric.MEMORY_AVAILABLE, Metric.MEMORY_PERCENT, Metric.MEMORY_PRESSURE,
         Metric.STORAGE_PERCENT, Metric.STORAGE_PRESSURE, Metric.THERMAL, Metric.THERMAL_PRESSURE,
         Metric.HEADROOM, Metric.BATTERY, Metric.TEMPERATURE, Metric.STATE)
+    val unavailableMetrics=availability?.let { loaded -> metrics.filter {
+        it !in loaded.second && permanentlyUnavailable(loaded.first.getValue(it).status)
+    } }.orEmpty()
+    val availableMetrics=metrics-unavailableMetrics.toSet()
     val navigation: @Composable (Metric) -> Unit = { metric ->
         HistoryChartControls(metric.name, from, end, !window.atLatest, window.range > 10_000,
             window.range < settings.retentionDays * 86_400_000L,
@@ -119,19 +133,21 @@ import kotlin.math.abs
             if (exporting) Text(stringResource(R.string.exporting))
             exportMessage?.let { Text(stringResource(it)) }
         } }
-        if(availability==null) item { Text(stringResource(R.string.loading)) }
-        else metrics.groupBy { it.category() }.forEach { (category,group) ->
-            val folded=group.filter { it !in availability!!.second && permanentlyUnavailable(availability!!.first.getValue(it).status) }
-            items(group-folded,key={it.name}) { HistoryChart(app,it,selected,from,end) { navigation(it) } }
-            if(folded.isNotEmpty()) item(key="unavailable_$category") {
-                UnavailableSection("history_$category",availabilityCategory(category),folded.size) {
-                    folded.forEach {
-                        val reading=availability!!.first.getValue(it)
-                        Text(agentStatus(reading.status))
-                        if(reading.source.isNotEmpty()) Text(reading.source)
-                        if(reading.reason!="NONE") Text(metricReadingReason(it,reading.reason))
-                        HistoryChart(app,it,selected,from,end) { navigation(it) }
-                    }
+        if(availabilityLoad.loading && availability==null) item {
+            Text(stringResource(if(availabilityLoad.snapshot==null) R.string.loading else R.string.refreshing_data),
+                Modifier.testTag("history_availability_loading"))
+        }
+        if(availabilityLoad.failed) item {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.load_failed),Modifier.weight(1f),color=MaterialTheme.colorScheme.error)
+                TextButton({availabilityRetry++},Modifier.testTag("history_availability_retry")) { Text(stringResource(R.string.retry)) }
+            }
+        }
+        if(availabilityLoad.snapshot!=null || availability!=null) {
+            items(availableMetrics,key={it.name}) { HistoryChart(app,it,selected,from,end) { navigation(it) } }
+            if(unavailableMetrics.isNotEmpty()) item(key="unavailable_history") {
+                UnavailableSection("history",unavailableMetrics.size) {
+                    unavailableMetrics.forEach { HistoryChart(app,it,selected,from,end) { navigation(it) } }
                 }
             }
         }
@@ -142,16 +158,18 @@ private data class HistoryChartRequest(val metric: Metric,val session: String?,v
 
 @Composable fun HistoryChart(app: MonitorApp, metric: Metric, session: String?, from: Long, to: Long,
     navigation: @Composable () -> Unit) {
+    var retry by remember(metric,session) { mutableIntStateOf(0) }
     val sampleUpdate by remember { app.db.dao().latest() }.collectAsStateWithLifecycle(initialValue=null)
     val agentUpdate by remember { app.db.agentDao().latest() }.collectAsStateWithLifecycle(initialValue=emptyList())
     val request=HistoryChartRequest(metric,session,from,to,if(metric.batteryMetric()!=null) agentUpdate.maxOfOrNull { it.id } ?: 0 else sampleUpdate?.id ?: 0)
-    val loaded by produceState<Pair<HistoryChartRequest,List<ChartBucket>>?>(null,request) {
-        value = request to withContext(Dispatchers.IO) {
-            metric.batteryMetric()?.let { loadAgentChart(app.db.agentDao(),it,from,to,session).flatMap { it.points }.sortedBy { it.time } }
-                ?: app.db.dao().chart(chartQuery(metric, session, from, to))
-        }
-    }
-    val points=loaded?.takeIf { it.first==request }?.second.orEmpty()
+    val loaded=rememberRetainedLoad(metric to session,request,retryKey=retry,load={ target ->
+        target.metric.batteryMetric()?.let { loadAgentChart(app.db.agentDao(),it,target.from,target.to,target.session).flatMap { it.points }.sortedBy { it.time } }
+            ?: app.db.dao().chart(chartQuery(target.metric,target.session,target.from,target.to))
+    },onError={ app.logs.event("history_chart_load_failed",error=true,probeMetric=metric.name) })
+    val snapshot=loaded.snapshot
+    val points=snapshot?.value.orEmpty()
+    val plotFrom=snapshot?.request?.from ?: from
+    val plotTo=snapshot?.request?.to ?: to
     val title = metricTitle(metric)
     val isState = metric == Metric.STATE || metric.name.endsWith("_PRESSURE")
     val states = when {
@@ -162,7 +180,8 @@ private data class HistoryChartRequest(val metric: Metric,val session: String?,v
     Panel(title, help = metric, helpContext = HelpContext.HISTORY) {
         navigation()
         if (metric.isProbe) Text(stringResource(if (metric == Metric.CPU_WAIT) R.string.cpu_wait_hint else R.string.probe_delay_hint), style = MaterialTheme.typography.bodySmall)
-        MetricPlot(title, points, from, to, metric.unit,
-            if (isState) 3.0 else if (metric == Metric.THERMAL) 6.0 else if (metric.unit == "%") 100.0 else null, states)
+        MetricPlot(title, points, plotFrom, plotTo, metric.unit,
+            if (isState) 3.0 else if (metric == Metric.THERMAL) 6.0 else if (metric.unit == "%") 100.0 else null, states,
+            dataReady=snapshot!=null,loading=loaded.loading,failed=loaded.failed,retry={retry++},testId="history_${metric.name}")
     }
 }

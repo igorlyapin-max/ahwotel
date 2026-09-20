@@ -49,6 +49,7 @@
     <string name="language">Interface language</string>
     <string name="sampling">Collection behavior</string>
     <string name="screen_off">Continue when screen is off</string>
+    <string name="last_measurement">Last measurement: %1$s</string>
     <string name="screen_off_hint">When disabled, pause and resume with the screen. The session timer keeps running.</string>
     <string name="wake_hint">Screen-off recording can increase battery use. Android or OEM restrictions may cause gaps.</string>
     <string name="retention">Local storage</string>
@@ -136,6 +137,19 @@
     <string name="cpu_wait_hint">Time the agent probe thread waited for CPU during the measured interval. This is not system CPU utilization.</string>
     <string name="probe_delay_hint">Delay against the planned probe time. Scheduling, GC and Android restrictions may contribute.</string>
     <string name="probe_window">Measured interval: %1$d ms</string>
+    <string name="chart_load_failed">Could not refresh the chart. The last loaded data remains visible.</string>
+    <string name="load_failed">Could not load the selected data.</string>
+    <string name="refreshing_data">Refreshing data…</string>
+    <string name="retry">Retry</string>
+    <string name="help_observation_title">Current observation</string>
+    <string name="help_observed_at">Measured at: %1$s</string>
+    <string name="help_observation_status">Status: %1$s — %2$s</string>
+    <string name="help_observation_source">Technical source: %1$s</string>
+    <string name="help_observation_reason">Reason: %1$s — %2$s</string>
+    <string name="help_observation_fresh">The value is within its expected update interval.</string>
+    <string name="help_observation_stale">The value is older than two expected update intervals or its timestamp is ahead of the device clock.</string>
+    <string name="help_observation_disabled">Collection of this metric is disabled in the current settings.</string>
+    <string name="help_observation_paused">Collection is paused while the screen is off. The displayed value is the last actual measurement.</string>
     <string name="memory_total">Total RAM</string>
     <string name="memory_low">Low memory flag</string>
     <string name="memory_threshold">Low memory threshold</string>

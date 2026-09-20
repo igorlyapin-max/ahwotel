@@ -71,6 +71,27 @@ import java.io.OutputStream
     SelfGroup.NETWORK->R.string.at_network; SelfGroup.RUNTIME->R.string.at_runtime; SelfGroup.STORAGE->R.string.storage
     SelfGroup.TASKS->R.string.at_tasks
 })
+
+private fun agentTechnicalLine(record: TelemetryRecord): String =
+    listOf(record.component,record.source).filter(String::isNotEmpty).distinct().joinToString(" · ")
+
+@Composable private fun agentCompactValue(metric: AgentMetric, record: TelemetryRecord): String {
+    val value=if(metric.aggregation==MetricAggregation.STATE && record.value!=null)
+        agentStateName(metric,record.value.toInt())
+    else record.value?.let(::formatNumber) ?: record.text ?: "—"
+    return if(value=="—" || metric.unit=="1") value else "$value ${metric.unit}"
+}
+
+@Composable private fun AgentCompactMetricCard(metric: AgentMetric, values: List<TelemetryRecord>, probes: List<TelemetryRecord>,
+    id: String, modifier: Modifier=Modifier, onHelp: () -> Unit) {
+    val fallback=probes.filter { it.metric==metric.name }.maxByOrNull { it.time }
+    val entries=if(values.isEmpty()) listOf(CompactMetricValue("—",fallback?.let(::agentTechnicalLine).orEmpty()))
+        else values.map { CompactMetricValue(agentCompactValue(metric,it),agentTechnicalLine(it)) }
+    CompactMetricCard(stringResource(metric.title),entries,id,modifier,help={
+        CompactInfoButton(stringResource(R.string.help_about,stringResource(metric.title)),
+            if(id.startsWith("selected_")) "agent_metric_help" else "agent_metric_help_$id",onHelp)
+    })
+}
 private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val end: Long,val session: String?,val revision: Long)
 
 @Composable fun AgentTelemetryScreen(app: MonitorApp, battery: Boolean, history: Boolean = false, session: String? = null,
@@ -82,7 +103,6 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
     val sessions by remember { app.db.dao().sessions() }.collectAsStateWithLifecycle(initialValue=emptyList())
     val liveSession=active.sessionId ?: sessions.firstOrNull()?.id ?: ""
     val liveLatest by remember(liveSession) { app.db.agentDao().latestInSession(liveSession) }.collectAsStateWithLifecycle(initialValue=emptyList())
-    val clock=measurementClock()
     val all=AgentMetric.entries.filter { it.battery==battery && (groupFilter==null || it.group==groupFilter) }
     var metric by remember { mutableStateOf(all.first()) }
     var expanded by remember { mutableStateOf(false) }
@@ -93,25 +113,37 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
     val now=if(history) window.end else maxOf(liveLatest.filter { it.sessionId==liveSession }.maxOfOrNull { it.time } ?: 0,remember(liveSession) { System.currentTimeMillis() })
     val querySession=if(history) session else liveSession
     val request=Triple(now,range,querySession)
-    val rangeData by produceState<Pair<Triple<Long,Long,String?>,Pair<List<MetricPresence>,List<TelemetryRecord>>>?>(null,request,liveLatest,history) {
-        value=withContext(Dispatchers.IO) { request to (app.db.agentDao().presence(now-range,now,querySession) to
-            app.db.agentDao().rangeLatest(now-range,now,querySession)) }
-    }
-    val loaded=rangeData?.takeIf { it.first==request }?.second
+    var rangeRetry by remember(history,querySession) { mutableIntStateOf(0) }
+    val rangeLoad=if(history) rememberRetainedLoad(history to querySession,request,retryKey=rangeRetry,load={ target ->
+            app.db.agentDao().presence(target.first-target.second,target.first,target.third) to
+                app.db.agentDao().rangeLatest(target.first-target.second,target.first,target.third)
+        },onError={app.logs.event("history_range_load_failed",error=true)})
+        else RetainedLoadState<Triple<Long,Long,String?>,Pair<List<MetricPresence>,List<TelemetryRecord>>>()
+    val currentRange=rangeLoad.snapshot?.takeIf { it.request==request }?.value
+    val loaded=rangeLoad.snapshot?.value
     val latest=(if(history) loaded?.second.orEmpty() else liveLatest.filter { it.sessionId==liveSession })
         .filter { AgentMetric.valueOf(it.metric).acceptsStream(it.stream) }
     val folded=all.filter { m ->
-        if(!history && !m.enabled(settings)) false
-        else if(history) loaded?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
-        else shouldFold(latest.filter { it.metric==m.name }.map { it.status },latest.any { it.metric==m.name && it.status=="AVAILABLE" && (it.value!=null || it.text!=null) })
+        if(history) currentRange?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
+        else {
+            val recorded=latest.filter { it.metric==m.name }
+            val checks=probeRows.filter { it.metric==m.name }
+            shouldFoldLive(m.enabled(settings),recorded.map { it.status },checks.map { it.status },
+                recorded.any { it.status=="AVAILABLE" && (it.value!=null || it.text!=null) })
+        }
     }
     var explicitlySelected by remember { mutableStateOf(false) }
     val summary by produceState<BatteryDaySummary?>(null,now,querySession,battery) {
         if(battery) value=withContext(Dispatchers.IO) { summarizeBattery(app.db.agentDao().batterySummaryRows(now-86_400_000,now,querySession),settings.batterySettings.currentSeconds*2000L) }
     }
     val chartRequest=AgentChartRequest(metric,range,now,querySession,liveLatest.maxOfOrNull { it.id } ?: 0)
-    var loadedChart by remember { mutableStateOf<Pair<AgentChartRequest,List<AgentChartSeries>>?>(null) }
-    val points=loadedChart?.takeIf { it.first==chartRequest }?.second.orEmpty()
+    var chartRetry by remember(metric,querySession) { mutableIntStateOf(0) }
+    val chartLoad=if(history) rememberRetainedLoad(metric to querySession,chartRequest,retryKey=chartRetry,load={ target ->
+            loadAgentChart(app.db.agentDao(),target.metric,target.end-target.range,target.end,target.session)
+        },onError={app.logs.event("history_chart_load_failed",error=true,probeMetric=metric.name)})
+        else RetainedLoadState<AgentChartRequest,List<AgentChartSeries>>()
+    val chartSnapshot=chartLoad.snapshot
+    val points=chartSnapshot?.value.orEmpty()
     var exportMessage by remember { mutableStateOf<Int?>(null) }
     var pendingExport by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val scope=rememberCoroutineScope(); val context=LocalContext.current
@@ -123,13 +155,19 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
             context.contentResolver.openOutputStream(uri)?.use { AgentHistoryExport.write(app,it,request.spec.json,request.kind=="battery",request.spec) } ?: error("output_unavailable")
         }; R.string.export_done } catch (_: Exception) { R.string.export_failed } }
     }
-    LaunchedEffect(chartRequest,querySession,liveLatest) {
-        val result=withContext(Dispatchers.IO) { loadAgentChart(app.db.agentDao(),metric,now-range,now,querySession) }
-        loadedChart=chartRequest to result
-    }
     LazyColumn(Modifier.fillMaxSize().testTag("agent_list").padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
         item { OutlinedButton(back) { Text(stringResource(R.string.at_back)) }; PageTitle(stringResource(if(groupFilter=="STORAGE") R.string.storage else if(battery) R.string.at_battery_title else R.string.at_self_title)) }
-        item { Text(stringResource(R.string.at_history_hint)) }
+        if(history) item { Text(stringResource(R.string.at_history_hint)) }
+        if(history && rangeLoad.loading && currentRange==null) item {
+            Text(stringResource(if(rangeLoad.snapshot==null) R.string.loading else R.string.refreshing_data),
+                Modifier.testTag("agent_range_loading"))
+        }
+        if(history && rangeLoad.failed) item {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.load_failed),Modifier.weight(1f),color=MaterialTheme.colorScheme.error)
+                TextButton({rangeRetry++},Modifier.testTag("agent_range_retry")) { Text(stringResource(R.string.retry)) }
+            }
+        }
         if(!history) item { OutlinedButton({ scope.launch { app.checkSources() } }) { Text(stringResource(R.string.ext_recheck)) } }
         if(battery && summary!=null) item {
             val day=summary!!
@@ -140,69 +178,93 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
                 Text(stringResource(R.string.ext_summary_hint),style=MaterialTheme.typography.bodySmall)
             }
         }
-        folded.groupBy { if(it.battery) "BATTERY" else it.group }.forEach { (group,metrics) ->
-            item { UnavailableSection("agent_"+group,availabilityCategory(group),metrics.size) {
-                metrics.forEach { m ->
-                    TextButton({ metric=m; explicitlySelected=true }) { Text(stringResource(m.title)) }
-                    latest.filter { it.metric==m.name }.forEach { r ->
-                        Text(agentStatus(r.status)+" · "+agentReason(r.reason))
-                        Text(r.source+" · "+formatTime(r.time),style=MaterialTheme.typography.bodySmall)
-                    }
-                    TextButton({help=m}) { Text(stringResource(R.string.at_help)) }
-                }
-            } }
-        }
-        item { Box { OutlinedButton({ expanded=true },Modifier.testTag("agent_metric_selector")) { Text(stringResource(metric.title)) }
+        if(!history || rangeLoad.snapshot!=null) item { Box { OutlinedButton({ expanded=true },Modifier.testTag("agent_metric_selector")) { Text(stringResource(metric.title)) }
             DropdownMenu(expanded,{expanded=false}) { (all-folded).forEach { m->DropdownMenuItem(text={Text(stringResource(m.title))},onClick={metric=m;explicitlySelected=true;expanded=false}) } }
         } }
-        if(metric !in folded || explicitlySelected) item { Panel(stringResource(metric.title)) {
-            TextButton({help=metric},Modifier.testTag("agent_metric_help")) { Text(stringResource(R.string.at_help)) }
-            Text(stringResource(if(metric.scope=="device") R.string.ext_scope_device else R.string.ext_scope_process))
+        if((!history || rangeLoad.snapshot!=null) && (metric !in folded || explicitlySelected)) item {
             val disabled=!history && !metric.enabled(settings)
             val values=if(disabled) emptyList() else latest.filter { it.metric==metric.name }
-            if(disabled) Text(stringResource(R.string.disabled))
-            if(!history) ReadingLifecycle(values.maxOfOrNull { it.time },clock,metric.intervalMs(settings),!disabled,active,
-                metric.staleAfterMs(settings,if(values.any { it.status=="AVAILABLE" }) "AVAILABLE" else values.maxByOrNull { it.time }?.status))
-            if(!history && values.isEmpty() && !disabled) {
-                probeRows.filter { it.metric==metric.name }.forEach { r ->
-                    Text(stringResource(R.string.reading_check_only))
+            if(!history) AgentCompactMetricCard(metric,values,probeRows,"selected_${metric.name}",onHelp={help=metric})
+            else Panel(stringResource(metric.title)) {
+                TextButton({help=metric},Modifier.testTag("agent_metric_help")) { Text(stringResource(R.string.at_help)) }
+                Text(stringResource(if(metric.scope=="device") R.string.ext_scope_device else R.string.ext_scope_process))
+                if(disabled) Text(stringResource(R.string.disabled))
+                if(values.isEmpty() && !disabled) Text(stringResource(R.string.no_data))
+                values.forEach { r->
+                    Text(agentCompactValue(metric,r),style=MaterialTheme.typography.headlineSmall)
+                    if(r.component.isNotEmpty()) Text(r.component)
+                    Text("${formatTime(r.time)} · ${r.source}",style=MaterialTheme.typography.bodySmall)
                     Text(agentStatus(r.status)+" · "+agentReason(r.reason))
+                    Text(qualityText(r.quality),style=MaterialTheme.typography.bodySmall)
+                    if(r.count>1) Text(stringResource(R.string.at_summary,r.count,formatNumber(r.low ?: 0.0),formatNumber(r.high ?: 0.0),formatNumber(r.p95 ?: 0.0)))
                 }
-            }
-            if(values.isEmpty() && !disabled) Text(stringResource(R.string.no_data))
-            values.forEach { r->
-                Text((if(metric.aggregation==MetricAggregation.STATE && r.value!=null) agentStateName(metric,r.value.toInt())
-                    else r.value?.let(::formatNumber) ?: r.text ?: "—")+" "+metric.unit,style=MaterialTheme.typography.headlineSmall)
-                if(r.component.isNotEmpty()) Text(r.component)
-                Text("${formatTime(r.time)} · ${r.source}",style=MaterialTheme.typography.bodySmall)
-                Text(agentStatus(r.status)+" · "+agentReason(r.reason))
-                Text(qualityText(r.quality),style=MaterialTheme.typography.bodySmall)
-                if(r.count>1) Text(stringResource(R.string.at_summary,r.count,formatNumber(r.low ?: 0.0),formatNumber(r.high ?: 0.0),formatNumber(r.p95 ?: 0.0)))
-            }
-            Choice(range,listOf(300_000L to stringResource(R.string.at_five_minutes),3_600_000L to stringResource(R.string.hour),86_400_000L to stringResource(R.string.day),604_800_000L to stringResource(R.string.week),1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
-            if(history) HistoryChartControls("agent_${metric.name}",now-range,now,!window.atLatest,range>10_000,
+                Choice(range,listOf(300_000L to stringResource(R.string.at_five_minutes),3_600_000L to stringResource(R.string.hour),86_400_000L to stringResource(R.string.day),604_800_000L to stringResource(R.string.week),1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
+                HistoryChartControls("agent_${metric.name}",now-range,now,!window.atLatest,range>10_000,
                 range<settings.retentionDays*86_400_000L,
                 earlier={window.earlier()},later={window.later()},zoomIn={window.zoomIn()},
                 zoomOut={window.zoomOut(settings.retentionDays*86_400_000L)})
-            if(loadedChart?.first!=chartRequest) Text(stringResource(R.string.loading))
-            // Components are separate series. Never join collector costs into one line.
-            (if(disabled) emptyList() else points).forEach { series ->
-                val component=series.component
-                if(component.isNotEmpty()) Text(component)
-                val stateLabels=if(metric.aggregation==MetricAggregation.STATE) series.points.mapNotNull { it.mean?.toInt() }.distinct()
-                    .associateWith { agentStateName(metric,it) } else emptyMap()
-                MetricPlot(stringResource(metric.title),series.points,now-range,now,metric.unit,
-                    fixedMaximum=if(metric==AgentMetric.LEVEL) 100.0 else null,
-                    aggregation=metric.aggregation, nominalStates=stateLabels,mixedBuckets=series.mixed,gapBuckets=series.gaps)
+                val plotFrom=chartSnapshot?.request?.let { it.end-it.range } ?: now-range
+                val plotTo=chartSnapshot?.request?.end ?: now
+                // Components are separate series. Never join collector costs into one line.
+                if(!disabled && points.isEmpty()) MetricPlot(stringResource(metric.title),emptyList(),plotFrom,plotTo,metric.unit,
+                    fixedMaximum=if(metric==AgentMetric.LEVEL) 100.0 else null,aggregation=metric.aggregation,
+                    dataReady=chartSnapshot!=null,loading=chartLoad.loading,failed=chartLoad.failed,
+                    retry={chartRetry++},testId="agent_${metric.name}")
+                (if(disabled) emptyList() else points).forEachIndexed { index,series ->
+                    val component=series.component
+                    if(component.isNotEmpty()) Text(component)
+                    val stateLabels=if(metric.aggregation==MetricAggregation.STATE) series.points.mapNotNull { it.mean?.toInt() }.distinct()
+                        .associateWith { agentStateName(metric,it) } else emptyMap()
+                    MetricPlot(stringResource(metric.title),series.points,plotFrom,plotTo,metric.unit,
+                        fixedMaximum=if(metric==AgentMetric.LEVEL) 100.0 else null,
+                        aggregation=metric.aggregation, nominalStates=stateLabels,mixedBuckets=series.mixed,gapBuckets=series.gaps,
+                        dataReady=true,loading=chartLoad.loading,failed=chartLoad.failed,
+                        retry={chartRetry++},testId="agent_${metric.name}_$index")
+                }
             }
-        } }
+        }
+        if(!history) item {
+            Choice(range,listOf(300_000L to stringResource(R.string.at_five_minutes),3_600_000L to stringResource(R.string.hour),
+                86_400_000L to stringResource(R.string.day),604_800_000L to stringResource(R.string.week),
+                1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
+        }
         item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(querySession,now-range,now,true)).encode();export.launch(if(battery) "battery.json" else "self-telemetry.json")}) {Text(stringResource(R.string.export_json))}
             OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(querySession,now-range,now,false)).encode();export.launch(if(battery) "battery.csv" else "self-telemetry.csv")}) {Text(stringResource(R.string.export_csv))}
         };exportMessage?.let { Text(stringResource(it)) } }
+        if((!history || rangeLoad.snapshot!=null) && folded.isNotEmpty()) item(key="unavailable_agent") {
+            UnavailableSection("agent",folded.size) {
+                if(history) folded.forEach { m ->
+                    TextButton({metric=m;explicitlySelected=true}) { Text(stringResource(m.title)) }
+                    CompactInfoButton(stringResource(R.string.help_about,stringResource(m.title)),onClick={help=m})
+                } else folded.chunked(2).forEach { row ->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        row.forEach { m -> Box(Modifier.weight(1f)) {
+                            AgentCompactMetricCard(m,latest.filter { it.metric==m.name && m.enabled(settings) },probeRows,
+                                "unavailable_${m.name}",onHelp={help=m})
+                        } }
+                        if(row.size==1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
     }
-    help?.let { m->AlertDialog(onDismissRequest={help=null},title={Text(stringResource(m.title))},
-        text={Text(stringResource(m.help)+"\n\n"+stringResource(R.string.reading_help),Modifier.verticalScroll(rememberScrollState()))},confirmButton={TextButton({help=null}) {Text(stringResource(R.string.at_close))}}) }
+    help?.let { m->
+        val records=(latest+probeRows).filter { it.metric==m.name }.distinctBy { it.id to it.stream }
+        AlertDialog(onDismissRequest={help=null},title={Text(stringResource(m.title))},text={
+            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(m.help))
+                Text(stringResource(if(m.scope=="device") R.string.ext_scope_device else R.string.ext_scope_process))
+                Text(stringResource(R.string.reading_help))
+                records.forEach { r ->
+                    Text(listOf(agentTechnicalLine(r),formatTime(r.time)).filter(String::isNotEmpty).joinToString(" · "),
+                        style=MaterialTheme.typography.bodySmall)
+                    Text(agentStatus(r.status)+" · "+agentReason(r.reason))
+                    Text(qualityText(r.quality),style=MaterialTheme.typography.bodySmall)
+                }
+            }
+        },confirmButton={TextButton({help=null}) {Text(stringResource(R.string.at_close))}})
+    }
 }
 @Composable internal fun agentStateName(metric: AgentMetric, value: Int): String {
     if(metric==AgentMetric.FLASH_LIFE) return when(value) {

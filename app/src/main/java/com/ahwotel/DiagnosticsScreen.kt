@@ -18,7 +18,10 @@ import java.io.File
 
 @Composable fun DiagnosticsScreen(app: MonitorApp) {
     var oem by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    if (oem) { OemScreen(app) { oem = false }; return }
+    if (oem) {
+        key("diagnostics:oem") { OemScreen(app) { oem = false } }
+        return
+    }
     val stats by app.stats.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
     val resume by app.db.resumeDao().observe().collectAsStateWithLifecycle(initialValue = null)

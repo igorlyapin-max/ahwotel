@@ -85,10 +85,10 @@ class ExtendedTelemetryAcceptanceTest {
                 TestUi { AgentTelemetryScreen(app,true,history=true,session="disclosure",historyEnd=now+1) {} }
             }
         }
-        reveal("agent_list","unavailable_agent_BATTERY")
+        reveal("agent_list","unavailable_agent")
         for(lang in listOf("en","ru")) {
             ui.runOnIdle { language=lang }
-            val toggle=ui.onNodeWithTag("unavailable_agent_BATTERY")
+            val toggle=ui.onNodeWithTag("unavailable_agent")
             toggle.performScrollTo().assertIsDisplayed()
             ui.onAllNodesWithText(if(lang=="en") "State of health" else "Остаточное здоровье SOH").assertCountEquals(0)
             toggle.performClick()
@@ -105,12 +105,12 @@ class ExtendedTelemetryAcceptanceTest {
             cpuWait=4.0,probeTime=now,probeInterval=1000,screenOn=true,capabilities="CPU=UNSUPPORTED;CPU_WAIT=AVAILABLE"))
         var history by mutableStateOf(false)
         ui.setContent { TestUi { MetricHelpHost(app) { if(history) HistoryScreen(app) else MonitorScreen(app) } } }
-        reveal("monitor_list","unavailable_monitor_CPU")
-        ui.onNodeWithTag("unavailable_monitor_CPU").assertIsDisplayed().performClick()
+        reveal("monitor_list","unavailable_monitor")
+        ui.onNodeWithTag("unavailable_monitor").assertIsDisplayed().performClick()
         screenshot("extended-cpu-monitor")
         ui.runOnIdle { history=true }
-        reveal("history_list","unavailable_history_CPU")
-        ui.onNodeWithTag("unavailable_history_CPU").performScrollTo().assertIsDisplayed().performClick()
+        reveal("history_list","unavailable_history")
+        ui.onNodeWithTag("unavailable_history").performScrollTo().assertIsDisplayed().performClick()
         screenshot("extended-cpu-history")
     }
 }

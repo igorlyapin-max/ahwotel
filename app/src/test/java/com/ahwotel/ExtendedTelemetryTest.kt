@@ -74,6 +74,10 @@ class ExtendedTelemetryTest {
         for(status in listOf("ERROR","UNAVAILABLE","DISABLED","WARMING_UP"))
             assertFalse(shouldFold(listOf(status),false))
         assertFalse(shouldFold(emptyList(),false))
+        assertTrue(shouldFoldLive(true,emptyList(),listOf("UNSUPPORTED"),false))
+        assertTrue(shouldFoldLive(true,emptyList(),listOf("PERMISSION_DENIED"),false))
+        assertFalse(shouldFoldLive(true,listOf("AVAILABLE"),listOf("UNSUPPORTED"),true))
+        assertTrue(shouldFoldLive(false,listOf("AVAILABLE"),emptyList(),true))
     }
     private fun row(metric: String,time: Long,value: Double?=null,status: String="AVAILABLE",session: String="one",segment: Int=0)=
         TelemetryRecord(sessionId=session,stream="battery",metric=metric,time=time,start=time,durationMs=0,segment=segment,value=value,source="test",status=status,metadata="{}")

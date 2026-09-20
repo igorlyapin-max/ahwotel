@@ -5,14 +5,18 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -28,7 +32,9 @@ import kotlin.math.abs
 @Composable fun MetricPlot(title: String, points: List<ChartBucket>, from: Long, to: Long,
     unit: String, fixedMaximum: Double? = null, states: List<String> = emptyList(),
     aggregation: MetricAggregation = MetricAggregation.GAUGE, nominalStates: Map<Int,String> = emptyMap(),
-    mixedBuckets: Set<Long> = emptySet(), gapBuckets: Set<Long> = emptySet()) {
+    mixedBuckets: Set<Long> = emptySet(), gapBuckets: Set<Long> = emptySet(),
+    dataReady: Boolean = true, loading: Boolean = false, failed: Boolean = false,
+    retry: (() -> Unit)? = null, testId: String = title) {
     val nominal = aggregation == MetricAggregation.STATE
     val stepped = nominal || states.isNotEmpty()
     val rangeVisible = !stepped && aggregation == MetricAggregation.GAUGE
@@ -69,10 +75,26 @@ import kotlin.math.abs
         selected = valid[(valid.indexOf(selected) + delta).coerceIn(0, valid.lastIndex)]
         return true
     }
+    val plotHeight = with(density) { (180.dp.toPx() + labelHeight * 3 + gap * 3).toDp() }
     Text(yTitle, style = MaterialTheme.typography.labelMedium)
-    if (valid.isEmpty()) Text(stringResource(R.string.no_data), Modifier.padding(vertical = 20.dp))
+    Box(Modifier.fillMaxWidth().height(4.dp)) {
+        if(loading) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("chart_loading_$testId"))
+    }
+    if (valid.isEmpty()) Box(Modifier.fillMaxWidth().height(plotHeight).testTag("chart_empty_$testId"),
+        contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+            Text(stringResource(when {
+                !dataReady && loading -> R.string.loading
+                failed -> R.string.chart_load_failed
+                else -> R.string.no_data
+            }))
+            if(failed && retry!=null) TextButton(retry,Modifier.testTag("chart_retry_$testId")) {
+                Text(stringResource(R.string.retry))
+            }
+        }
+    }
     else {
-        Canvas(Modifier.fillMaxWidth().height(with(density) { (180.dp.toPx() + labelHeight * 3 + gap * 3).toDp() })
+        Canvas(Modifier.fillMaxWidth().height(plotHeight).testTag("chart_plot_$testId")
             .semantics {
                 contentDescription = title
                 stateDescription = "$description. $selectedDescription"
@@ -160,5 +182,10 @@ import kotlin.math.abs
             }
             Text("${formatTime(p.time)}\n$value", style = MaterialTheme.typography.bodySmall)
         }
+    }
+    if(failed && valid.isNotEmpty()) Row(verticalAlignment=Alignment.CenterVertically) {
+        Text(stringResource(R.string.chart_load_failed),Modifier.weight(1f).testTag("chart_error_$testId"),
+            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+        if(retry!=null) TextButton(retry,Modifier.testTag("chart_retry_$testId")) { Text(stringResource(R.string.retry)) }
     }
 }

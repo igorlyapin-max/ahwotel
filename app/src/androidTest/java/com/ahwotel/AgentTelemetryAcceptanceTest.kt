@@ -62,7 +62,8 @@ class AgentTelemetryAcceptanceTest {
         ui.onNodeWithText("Close").performClick()
         ui.waitForIdle(); delay(600)
         ui.onNodeWithText("5 minutes").performScrollTo().performClick()
-        ui.onNodeWithContentDescription("Process CPU time").performScrollTo()
+        ui.onAllNodesWithTag("chart_plot_agent_CPU_TIME").assertCountEquals(0)
+        ui.onNodeWithTag("compact_metric_selected_CPU_TIME").performScrollTo().assertIsDisplayed()
         ui.waitForIdle(); delay(600)
         device.takeScreenshot(File(app.filesDir,"agent-code8-self-en.png"))
     }
@@ -80,7 +81,8 @@ class AgentTelemetryAcceptanceTest {
         ui.onNodeWithText("Закрыть").performClick()
         ui.waitForIdle(); delay(600)
         ui.onNodeWithText("5 минут").performScrollTo().performClick()
-        ui.onNodeWithContentDescription("Уровень заряда").performScrollTo()
+        ui.onAllNodesWithTag("chart_plot_agent_LEVEL").assertCountEquals(0)
+        ui.onNodeWithTag("compact_metric_selected_LEVEL").performScrollTo().assertIsDisplayed()
         ui.waitForIdle(); delay(600)
         device.takeScreenshot(File(app.filesDir,"agent-code8-battery-ru.png"))
     }

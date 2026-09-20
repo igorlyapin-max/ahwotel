@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 fun permanentlyUnavailable(status: String) = status in setOf("UNSUPPORTED","PERMISSION_DENIED")
 fun shouldFold(statuses: List<String>, hasValue: Boolean) =
     !hasValue && statuses.isNotEmpty() && statuses.all(::permanentlyUnavailable)
+fun shouldFoldLive(enabled: Boolean, recordedStatuses: List<String>, checkStatuses: List<String>,
+    hasRecordedValue: Boolean) = !enabled || shouldFold(recordedStatuses+checkStatuses,hasRecordedValue)
 
 fun Metric.category(): String = when {
     name.startsWith("CPU") || this==Metric.PROBE_DELAY -> "CPU"
@@ -41,9 +43,9 @@ fun Metric.capability(sample: SampleRow?) = sample?.capabilities?.split(';')
 }
 
 /** Disclosure is presentation only: observations, export and diagnostics remain complete. */
-@Composable fun UnavailableSection(id: String, title: String, count: Int, content: @Composable () -> Unit) {
+@Composable fun UnavailableSection(id: String, count: Int, content: @Composable () -> Unit) {
     var expanded by rememberSaveable(id) { mutableStateOf(false) }
-    val label=stringResource(R.string.ext_unavailable,title,count)
+    val label=stringResource(R.string.ext_unavailable,count)
     val state=stringResource(if(expanded) R.string.ext_expanded else R.string.ext_collapsed)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         TextButton({ expanded=!expanded },Modifier.fillMaxWidth().testTag("unavailable_$id")

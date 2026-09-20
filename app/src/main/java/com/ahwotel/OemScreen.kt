@@ -23,6 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ahwotel.oem.*
 import kotlinx.coroutines.*
 
+private data class OemPeriodRequest(val from: Long,val to: Long,val session: String?,val history: Boolean)
+private data class OemChartRequest(val metric: OemMetric,val provider: String,val session: String?,
+    val from: Long,val to: Long,val revision: Long)
+
 fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
 @Composable fun oemCategoryTitle(category: OemCategory) = stringResource(oemStringId(LocalContext.current, "oem_category_${category.name.lowercase()}"))
 @Composable fun oemMetricTitle(metric: OemMetric) = stringResource(oemStringId(LocalContext.current, "oem_${metric.key}_title"))
@@ -57,7 +61,6 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val active by app.state.collectAsStateWithLifecycle()
     val liveSession=active.sessionId ?: sessions.firstOrNull()?.id ?: ""
     val recorded by remember(liveSession) { app.db.oemDao().latestInSession(liveSession) }.collectAsStateWithLifecycle(initialValue=emptyList())
-    val clock=measurementClock()
     var session by rememberSaveable { mutableStateOf<String?>(null) }
     var sessionMenu by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf("values") }
@@ -89,54 +92,61 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             finally { exporting = false }
         }
     }
-    val periodRequest=Triple(from,end,session)
-    val periodData by produceState<Pair<Triple<Long,Long,String?>,Pair<List<MetricPresence>,List<OemObservation>>>?>(null,periodRequest,showHistory,latest) {
-        if(showHistory) value=withContext(Dispatchers.IO) { periodRequest to (app.db.oemDao().presence(from,end,session) to app.db.oemDao().rangeLatest(from,end,session).map { it.observation() }) }
-    }
-    val period=periodData?.takeIf { it.first==periodRequest }?.second
+    val periodRequest=OemPeriodRequest(from,end,session,showHistory)
+    var periodRetry by remember(showHistory,session) { mutableIntStateOf(0) }
+    val periodLoad=if(showHistory) rememberRetainedLoad(showHistory to session,periodRequest,retryKey=periodRetry,load={ target ->
+            app.db.oemDao().presence(target.from,target.to,target.session) to
+                app.db.oemDao().rangeLatest(target.from,target.to,target.session).map { it.observation() }
+        },onError={app.logs.event("history_range_load_failed",error=true)})
+        else RetainedLoadState<OemPeriodRequest,Pair<List<MetricPresence>,List<OemObservation>>>()
+    val currentPeriod=periodLoad.snapshot?.takeIf { it.request==periodRequest }?.value
+    val period=periodLoad.snapshot?.value
     val displayed=if(showHistory) period?.second.orEmpty() else recorded.filter { it.sessionId==liveSession }.map { it.observation() }
     @Composable fun MetricCard(metric: OemMetric) {
-                val title = oemMetricTitle(metric)
-                Panel(title) {
-                    Text(metric.wire, style = MaterialTheme.typography.labelSmall)
-                    TextButton({ help = metric.name }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.oem_help, title)) }
-                    val rows = displayed.filter { it.metric == metric }.sortedBy { it.provider }
-                    if(!showHistory) ReadingLifecycle(rows.maxOfOrNull { it.time },clock,settings.oem.seconds(metric.category)*1000L,
-                        settings.oem.enabled && metric.category in settings.oem.categories,active)
-                    if (rows.isEmpty()) {
-                        Text(stringResource(R.string.oem_no_observation))
-                        if(!showHistory) latest.values.filter { it.metric==metric }.forEach { check ->
-                            Text(stringResource(R.string.reading_check_only))
-                            Text(oemCode(check.status.name)+" · "+oemCode(check.reason.name))
-                        }
-                    }
-                    rows.forEach { row ->
-                        Text(oemProvider(row.provider), style = MaterialTheme.typography.titleSmall)
-                        Text(oemValue(row), color = if (row.status == OemStatus.AVAILABLE) Accent else Ink)
-                        Text(stringResource(R.string.oem_observed, formatTime(row.time)), style = MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.oem_provenance, oemCode(row.source.name), oemCode(row.scope.name), oemCode(row.quality.name)), style = MaterialTheme.typography.bodySmall)
-                        if (row.reason != OemReason.NONE) Text(oemCode(row.reason.name), style = MaterialTheme.typography.bodySmall)
-                        if (metric.kind == ValueKind.NUMBER || metric.kind == ValueKind.BOOLEAN) {
-                            val key = OemCoordinator.key(row)
-                            OutlinedButton({ graph = if (graph == key) null else key }) { Text(stringResource(R.string.oem_graph)) }
-                            if (graph == key) {
-                                if(showHistory) HistoryChartControls("oem_${metric.name}_${row.provider}",from,end,!window.atLatest,
-                                    range>10_000,range<settings.retentionDays*86_400_000L,
-                                    earlier={window.earlier()},later={window.later()},zoomIn={window.zoomIn()},
-                                    zoomOut={window.zoomOut(settings.retentionDays*86_400_000L)})
-                                val chartSession=if(showHistory) session else liveSession
-                                val request=listOf(metric.name,row.provider,from,end,chartSession,row.time)
-                                val loadedChart by produceState<Pair<List<Any?>,List<ChartBucket>>?>(null,request) {
-                                    value = request to withContext(Dispatchers.IO) { app.db.oemDao().chart(oemChartQuery(metric,row.provider,chartSession,from,end)) }
-                                }
-                                val points=loadedChart?.takeIf { it.first==request }?.second.orEmpty()
-                                MetricPlot(title, points, from, end, metric.unit,
-                                    fixedMaximum = if (metric.kind == ValueKind.BOOLEAN) 1.0 else if (metric == OemMetric.OEM_SYSTEM_CPU) 100.0 else null,
-                                    states = if (metric.kind == ValueKind.BOOLEAN) listOf(oemCode("FALSE"), oemCode("TRUE")) else emptyList())
-                            }
-                        }
+        val title=oemMetricTitle(metric)
+        val rows=displayed.filter { it.metric==metric }.sortedBy { it.provider }
+        if(!showHistory) {
+            val checks=latest.values.filter { it.metric==metric }.sortedBy { it.provider }
+            val compact=(if(rows.isEmpty()) checks else rows).map { row ->
+                CompactMetricValue(if(row.status==OemStatus.AVAILABLE) oemValue(row) else "—",
+                    listOf(row.provider,row.source.name).filter(String::isNotEmpty).joinToString(" · "))
+            }
+            CompactMetricCard(title,compact, "oem_${metric.name}",help={
+                CompactInfoButton(stringResource(R.string.oem_help,title),"oem_metric_help_${metric.name}") { help=metric.name }
+            })
+        } else Panel(title) {
+            Text(metric.wire,style=MaterialTheme.typography.labelSmall)
+            TextButton({help=metric.name},modifier=Modifier.heightIn(min=48.dp)) { Text(stringResource(R.string.oem_help,title)) }
+            if(rows.isEmpty()) Text(stringResource(R.string.oem_no_observation))
+            rows.forEach { row ->
+                Text(oemProvider(row.provider),style=MaterialTheme.typography.titleSmall)
+                Text(oemValue(row),color=if(row.status==OemStatus.AVAILABLE) Accent else Ink)
+                Text(stringResource(R.string.oem_observed,formatTime(row.time)),style=MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.oem_provenance,oemCode(row.source.name),oemCode(row.scope.name),oemCode(row.quality.name)),style=MaterialTheme.typography.bodySmall)
+                if(row.reason!=OemReason.NONE) Text(oemCode(row.reason.name),style=MaterialTheme.typography.bodySmall)
+                if(metric.kind==ValueKind.NUMBER || metric.kind==ValueKind.BOOLEAN) {
+                    val key=OemCoordinator.key(row)
+                    OutlinedButton({graph=if(graph==key) null else key}) { Text(stringResource(R.string.oem_graph)) }
+                    if(graph==key) {
+                        var chartRetry by remember(metric,row.provider,session) { mutableIntStateOf(0) }
+                        HistoryChartControls("oem_${metric.name}_${row.provider}",from,end,!window.atLatest,
+                            range>10_000,range<settings.retentionDays*86_400_000L,
+                            earlier={window.earlier()},later={window.later()},zoomIn={window.zoomIn()},
+                            zoomOut={window.zoomOut(settings.retentionDays*86_400_000L)})
+                        val request=OemChartRequest(metric,row.provider,session,from,end,row.time)
+                        val chartLoad=rememberRetainedLoad(Triple(metric,row.provider,session),request,retryKey=chartRetry,load={ target ->
+                            app.db.oemDao().chart(oemChartQuery(target.metric,target.provider,target.session,target.from,target.to))
+                        },onError={app.logs.event("history_chart_load_failed",error=true,probeMetric=metric.name)})
+                        val snapshot=chartLoad.snapshot
+                        MetricPlot(title,snapshot?.value.orEmpty(),snapshot?.request?.from ?: from,snapshot?.request?.to ?: end,metric.unit,
+                            fixedMaximum=if(metric.kind==ValueKind.BOOLEAN) 1.0 else if(metric==OemMetric.OEM_SYSTEM_CPU) 100.0 else null,
+                            states=if(metric.kind==ValueKind.BOOLEAN) listOf(oemCode("FALSE"),oemCode("TRUE")) else emptyList(),
+                            dataReady=snapshot!=null,loading=chartLoad.loading,failed=chartLoad.failed,retry={chartRetry++},
+                            testId="oem_${metric.name}_${row.provider}")
                     }
                 }
+            }
+        }
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag("oem_screen"),
         verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -192,14 +202,42 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             item { Choice(categoryName, OemCategory.entries.map { it.name to oemCategoryTitle(it) }) { categoryName = it } }
             val group=OemMetric.entries.filter { it.category==category }
             val folded=group.filter { m ->
-                if(showHistory) period?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
-                else shouldFold(displayed.filter { it.metric==m }.map { it.status.name },
-                    displayed.any { it.metric==m && it.status==OemStatus.AVAILABLE })
+                if(showHistory) currentPeriod?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
+                else {
+                    val recorded=displayed.filter { it.metric==m }
+                    val checks=latest.values.filter { it.metric==m }
+                    shouldFoldLive(settings.oem.enabled,recorded.map { it.status.name },checks.map { it.status.name },
+                        recorded.any { it.status==OemStatus.AVAILABLE && (it.number!=null || it.text!=null) })
+                }
             }
-            items(group-folded,key={it.name}) { MetricCard(it) }
-            if(folded.isNotEmpty()) item {
-                UnavailableSection("oem_"+category.name,oemCategoryTitle(category),folded.size) {
-                    folded.forEach { MetricCard(it) }
+            if(showHistory && periodLoad.loading && currentPeriod==null) item {
+                Text(stringResource(if(periodLoad.snapshot==null) R.string.loading else R.string.refreshing_data),
+                    Modifier.testTag("oem_period_loading"))
+            }
+            if(showHistory && periodLoad.failed) item {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(stringResource(R.string.load_failed),Modifier.weight(1f),color=MaterialTheme.colorScheme.error)
+                    TextButton({periodRetry++},Modifier.testTag("oem_period_retry")) { Text(stringResource(R.string.retry)) }
+                }
+            }
+            if(!showHistory || periodLoad.snapshot!=null) {
+                if(showHistory) items(group-folded,key={it.name}) { MetricCard(it) }
+                else items((group-folded).chunked(2),key={row->row.joinToString("_") { it.name }}) { row ->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        row.forEach { metric -> Box(Modifier.weight(1f)) { MetricCard(metric) } }
+                        if(row.size==1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                if(folded.isNotEmpty()) item {
+                    UnavailableSection("oem",folded.size) {
+                        if(showHistory) folded.forEach { MetricCard(it) }
+                        else folded.chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                row.forEach { metric -> Box(Modifier.weight(1f)) { MetricCard(metric) } }
+                                if(row.size==1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
         } else if (mode == "inventory") {
@@ -233,7 +271,11 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             }
         }
     }
-    help?.let { key -> OemHelpDialog(OemMetric.valueOf(key)) { help = null } }
+    help?.let { key ->
+        val metric=OemMetric.valueOf(key)
+        OemHelpDialog(metric,(displayed+latest.values).filter { it.metric==metric }
+            .distinctBy { Triple(it.provider,it.source,it.time) }) { help=null }
+    }
 }
 
 @Composable private fun eventValue(value: String?, metric: OemMetric?): String = when {
@@ -243,7 +285,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     else -> oemCode(value)
 }
 
-@Composable fun OemHelpDialog(metric: OemMetric, onDismiss: () -> Unit) {
+@Composable fun OemHelpDialog(metric: OemMetric, observations: List<OemObservation> = emptyList(), onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = standardScope(metric)
     val knoxScope = KnoxCapabilityRegistry.find(metric)?.call?.scope
@@ -262,6 +304,13 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                         Text(if (key == "units") stringResource(id, metric.unit, scopeText) else stringResource(id))
                     }
                     Text(metric.wire, style = MaterialTheme.typography.labelSmall)
+                    observations.forEach { row ->
+                        Text(listOf(row.provider,row.source.name,formatTime(row.time)).joinToString(" · "),
+                            style=MaterialTheme.typography.bodySmall)
+                        Text(oemCode(row.status.name)+" · "+oemCode(row.reason.name))
+                        Text(stringResource(R.string.oem_provenance,oemCode(row.source.name),oemCode(row.scope.name),oemCode(row.quality.name)),
+                            style=MaterialTheme.typography.bodySmall)
+                    }
                 }
                 TextButton(onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.help_close)) }
             }

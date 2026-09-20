@@ -4,7 +4,7 @@
 <string name="ext_system_io">System I/O probes</string>
 <string name="ext_flash">Flash lifetime probes</string>
 <string name="ext_io_interval">I/O interval, seconds</string>
-<string name="ext_unavailable">%1$s · Unavailable measurements (%2$d)</string>
+<string name="ext_unavailable">Unavailable measurements (%1$d)</string>
 <string name="ext_expanded">Expanded</string>
 <string name="ext_collapsed">Collapsed</string>
 <string name="ext_recheck">Check availability</string>

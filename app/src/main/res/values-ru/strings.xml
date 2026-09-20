@@ -49,6 +49,7 @@
     <string name="language">Язык интерфейса</string>
     <string name="sampling">Поведение сбора</string>
     <string name="screen_off">Продолжать при выключенном экране</string>
+    <string name="last_measurement">Последнее измерение: %1$s</string>
     <string name="screen_off_hint">Если выключено — пауза до включения экрана. Таймер сессии продолжает работать.</string>
     <string name="wake_hint">Сбор при выключенном экране повышает расход батареи. Android или OEM могут создавать пропуски.</string>
     <string name="retention">Локальное хранение</string>
@@ -136,6 +137,19 @@
     <string name="cpu_wait_hint">Время ожидания CPU потоком пробы агента за измеренный интервал. Это не загрузка CPU всего устройства.</string>
     <string name="probe_delay_hint">Опоздание относительно планового запуска пробы. Возможные причины: планировщик, GC и ограничения Android.</string>
     <string name="probe_window">Измеренный интервал: %1$d мс</string>
+    <string name="chart_load_failed">Не удалось обновить график. Последние загруженные данные остаются видимыми.</string>
+    <string name="load_failed">Не удалось загрузить выбранные данные.</string>
+    <string name="refreshing_data">Обновление данных…</string>
+    <string name="retry">Повторить</string>
+    <string name="help_observation_title">Текущее наблюдение</string>
+    <string name="help_observed_at">Время измерения: %1$s</string>
+    <string name="help_observation_status">Статус: %1$s — %2$s</string>
+    <string name="help_observation_source">Технический источник: %1$s</string>
+    <string name="help_observation_reason">Причина: %1$s — %2$s</string>
+    <string name="help_observation_fresh">Значение находится в пределах ожидаемого интервала обновления.</string>
+    <string name="help_observation_stale">Значение старше двух ожидаемых интервалов или его время находится впереди часов устройства.</string>
+    <string name="help_observation_disabled">Сбор этого показателя выключен в текущих настройках.</string>
+    <string name="help_observation_paused">Сбор приостановлен при выключенном экране. Показано последнее фактическое измерение.</string>
     <string name="memory_total">Всего RAM</string>
     <string name="memory_low">Признак нехватки памяти</string>
     <string name="memory_threshold">Порог нехватки памяти</string>

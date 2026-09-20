@@ -24,6 +24,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.util.Locale
 import com.ahwotel.oem.*
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class HistoryNavigationAcceptanceTest {
@@ -78,8 +79,8 @@ class HistoryNavigationAcceptanceTest {
             memoryAvailable=1024.0,cpuWait=2.0,probeTime=now,screenOn=true,
             capabilities="CPU=UNSUPPORTED;CPU_WAIT=AVAILABLE"))
         ui.setContent { Theme { MetricHelpHost(app) { HistoryScreen(app) } } }
-        reveal("unavailable_history_CPU")
-        ui.onNodeWithTag("unavailable_history_CPU").performClick()
+        reveal("unavailable_history")
+        ui.onNodeWithTag("unavailable_history").performClick()
         reveal("history_CPU_zoom_in")
         ui.onNodeWithTag("history_CPU_zoom_in").assertIsDisplayed()
         reveal("history_MEMORY_AVAILABLE_later")
@@ -137,15 +138,79 @@ class HistoryNavigationAcceptanceTest {
         }
     }
 
+    @Test fun chartKeepsTheLastSnapshotUntilRefreshCompletes(): Unit = runBlocking {
+        var request by mutableIntStateOf(1)
+        val first=CompletableDeferred<List<ChartBucket>>()
+        val second=CompletableDeferred<List<ChartBucket>>()
+        ui.setContent { Theme {
+            val state=rememberRetainedLoad("stable",request,load={ key -> if(key==1) first.await() else second.await() })
+            val snapshot=state.snapshot
+            MetricPlot("Stable",snapshot?.value.orEmpty(),0,1000,"%",dataReady=snapshot!=null,
+                loading=state.loading,failed=state.failed,testId="retained")
+        } }
+        first.complete(listOf(ChartBucket(0,0,"s",500,10.0,10.0,10.0,1)))
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_plot_retained").fetchSemanticsNodes().isNotEmpty() }
+        ui.runOnIdle { request=2 }
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_loading_retained").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("chart_plot_retained").assertIsDisplayed()
+        ui.onAllNodesWithText(ui.activity.getString(R.string.no_data)).assertCountEquals(0)
+        second.complete(emptyList())
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_empty_retained").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText(ui.activity.getString(R.string.no_data)).assertIsDisplayed()
+    }
+
+    @Test fun failedInitialChartLoadCanBeRetriedWithoutShowingNoData() {
+        var retry by mutableIntStateOf(0)
+        val attempts=AtomicInteger()
+        ui.setContent { Theme {
+            val state=rememberRetainedLoad("retry",1,retryKey=retry,load={
+                if(attempts.getAndIncrement()==0) error("fixture_failure")
+                listOf(ChartBucket(0,0,"s",500,10.0,10.0,10.0,1))
+            })
+            MetricPlot("Retry",state.snapshot?.value.orEmpty(),0,1000,"%",dataReady=state.snapshot!=null,
+                loading=state.loading,failed=state.failed,retry={retry++},testId="retry")
+        } }
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_retry_retry").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText(ui.activity.getString(R.string.no_data)).assertDoesNotExist()
+        ui.onNodeWithTag("chart_retry_retry").performClick()
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_plot_retry").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("chart_retry_retry").assertDoesNotExist()
+    }
+
+    @Test fun currentAgentProbeFoldsUnsupportedMetricButRecordedValueKeepsItVisible(): Unit = runBlocking {
+        app.saveSettings(app.settings.value.copy(batterySettings=app.settings.value.batterySettings.copy(enabled=true,current=true)))
+        val now=System.currentTimeMillis()
+        app.agentTelemetry.probes.value=listOf(TelemetryRecord(sessionId="",stream="battery",metric="LEVEL",time=now,
+            start=now,durationMs=0,segment=0,source="sysfs",status="UNSUPPORTED",reason="NOT_FOUND",metadata="{}"))
+        ui.setContent { Theme { MetricHelpHost(app) { AgentTelemetryScreen(app,true,back={}) } } }
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("unavailable_agent").fetchSemanticsNodes().isNotEmpty() }
+        ui.onAllNodesWithTag("compact_metric_selected_LEVEL").assertCountEquals(0)
+        ui.onNodeWithTag("unavailable_agent").performClick()
+        ui.onNodeWithTag("agent_list").performScrollToNode(hasTestTag("compact_metric_unavailable_LEVEL"))
+        ui.onNodeWithTag("compact_metric_unavailable_LEVEL").assertIsDisplayed()
+
+        val session="agent-probe"
+        app.db.dao().start(SessionRow(session,app.settings.value.deviceId,now-1000,reason="fixture",
+            configuration=SettingsCodec.encode(app.settings.value),continuous=true,durationSeconds=300))
+        app.db.agentDao().insert(listOf(TelemetryRecord(sessionId=session,stream="battery",metric="LEVEL",time=now,
+            start=now,durationMs=0,segment=0,value=55.0,source="android_api",status="AVAILABLE",metadata="{}")))
+        app.state.value=RuntimeState(sessionId=session)
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("compact_metric_selected_LEVEL").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("compact_metric_selected_LEVEL").assertIsDisplayed()
+        app.state.value=RuntimeState()
+        app.agentTelemetry.probes.value=emptyList()
+    }
+
     @Test fun extendedHistoryGraphsExposeTheSameWindowControls(): Unit = runBlocking {
         var screen by mutableStateOf("battery")
         val windows=mapOf("battery" to HistoryWindowState(),"self" to HistoryWindowState(),"storage" to HistoryWindowState())
-        ui.setContent { Theme { MetricHelpHost(app) {
-            when(screen) {
-                "battery" -> AgentTelemetryScreen(app,true,history=true,historyWindow=windows.getValue(screen),back={})
-                "self" -> AgentTelemetryScreen(app,false,history=true,historyWindow=windows.getValue(screen),back={})
-                "storage" -> AgentTelemetryScreen(app,false,history=true,historyWindow=windows.getValue(screen),groupFilter="STORAGE",back={})
-                else -> OemScreen(app,{})
+        ui.setContent { Theme { MetricHelpHost(app) { key(screen) {
+                when(screen) {
+                    "battery" -> AgentTelemetryScreen(app,true,history=true,historyWindow=windows.getValue(screen),back={})
+                    "self" -> AgentTelemetryScreen(app,false,history=true,historyWindow=windows.getValue(screen),back={})
+                    "storage" -> AgentTelemetryScreen(app,false,history=true,historyWindow=windows.getValue(screen),groupFilter="STORAGE",back={})
+                    else -> OemScreen(app,{})
+                }
             }
         } } }
         val cases = listOf(
@@ -177,6 +242,35 @@ class HistoryNavigationAcceptanceTest {
         val oemTag="history_oem_ANDROID_SDK_android_standard_earlier"
         ui.onNodeWithTag("oem_screen").performScrollToNode(hasTestTag(oemTag))
         ui.onNodeWithTag(oemTag).assertIsDisplayed()
+    }
+
+    @Test fun liveExtendedScreensUseCompactCardsAndReserveGraphsForHistory() {
+        runBlocking { app.saveSettings(app.settings.value.copy(oem=app.settings.value.oem.copy(enabled=true))) }
+        var screen by mutableStateOf("battery")
+        ui.setContent { Theme { MetricHelpHost(app) { key(screen) {
+                when(screen) {
+                    "battery" -> AgentTelemetryScreen(app,true,back={})
+                    "self" -> AgentTelemetryScreen(app,false,back={})
+                    "storage" -> AgentTelemetryScreen(app,false,groupFilter="STORAGE",back={})
+                    else -> OemScreen(app,{})
+                }
+            }
+        } } }
+        for((page,metric) in listOf("battery" to "LEVEL","self" to "CPU_TIME","storage" to "DB_SIZE")) {
+            ui.runOnIdle { screen=page }
+            ui.waitUntil(10000) { ui.onAllNodesWithTag("compact_metric_selected_$metric").fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithTag("agent_list").performScrollToNode(hasTestTag("compact_metric_selected_$metric"))
+            ui.onNodeWithTag("compact_metric_selected_$metric").assertIsDisplayed()
+            ui.onAllNodesWithTag("chart_plot_agent_$metric").assertCountEquals(0)
+            ui.onAllNodesWithTag("chart_empty_agent_$metric").assertCountEquals(0)
+        }
+        ui.runOnIdle { screen="oem" }
+        ui.waitUntil(10000) { ui.onAllNodesWithTag("oem_screen").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("oem_screen").performScrollToNode(hasTestTag("compact_metric_oem_MANUFACTURER"))
+        val first=ui.onNodeWithTag("compact_metric_oem_MANUFACTURER").fetchSemanticsNode().boundsInRoot
+        val second=ui.onNodeWithTag("compact_metric_oem_MODEL").fetchSemanticsNode().boundsInRoot
+        assertTrue(first.width>0 && second.width>0);assertTrue(first.right<=second.left)
+        ui.onAllNodesWithText(app.getString(R.string.oem_graph)).assertCountEquals(0)
     }
 
     @Test fun profileActionsFitCompactScreenWithLargeEnglishAndRussianText() {

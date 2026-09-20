@@ -4,7 +4,7 @@
 <string name="ext_system_io">Системные источники I/O</string>
 <string name="ext_flash">Проверка износа флеш-памяти</string>
 <string name="ext_io_interval">Интервал I/O, секунды</string>
-<string name="ext_unavailable">%1$s · Недоступные показатели (%2$d)</string>
+<string name="ext_unavailable">Недоступные показатели (%1$d)</string>
 <string name="ext_expanded">Развёрнуто</string>
 <string name="ext_collapsed">Свёрнуто</string>
 <string name="ext_recheck">Проверить доступность</string>

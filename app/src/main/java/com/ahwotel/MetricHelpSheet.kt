@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 
 enum class HelpContext { GENERAL, HISTORY, DIAGNOSTICS }
 enum class HelpTopic { SCREEN_OFF }
@@ -27,7 +28,7 @@ data class MetricObservationContext(
     val status: String = "WARMING_UP",
     val reason: String = "NONE",
     val source: String = "",
-    val stale: Boolean = false,
+    val staleAfterMs: Long? = null,
     val enabled: Boolean = true,
     val paused: Boolean = false,
 )
@@ -53,7 +54,7 @@ data class HelpPage(val metric: Metric? = null, val group: HelpGroup? = null, va
             save = { listOf(it.metric?.name ?: "", it.group?.name ?: "", it.context.name, it.topic?.name ?: "",
                 it.observation?.observedAt?.toString() ?: "", it.observation?.status ?: "",
                 it.observation?.reason ?: "", it.observation?.source ?: "",
-                it.observation?.stale?.toString() ?: "", it.observation?.enabled?.toString() ?: "",
+                it.observation?.staleAfterMs?.toString() ?: "", it.observation?.enabled?.toString() ?: "",
                 it.observation?.paused?.toString() ?: "") },
             restore = { HelpPage(it[0].takeIf(String::isNotEmpty)?.let(Metric::valueOf),
                 it[1].takeIf(String::isNotEmpty)?.let(HelpGroup::valueOf),
@@ -61,7 +62,7 @@ data class HelpPage(val metric: Metric? = null, val group: HelpGroup? = null, va
                 it.getOrNull(5)?.takeIf(String::isNotEmpty)?.let { status -> MetricObservationContext(
                     observedAt=it.getOrNull(4)?.toLongOrNull(),status=status,
                     reason=it.getOrNull(6).orEmpty(),source=it.getOrNull(7).orEmpty(),
-                    stale=it.getOrNull(8).toBoolean(),enabled=it.getOrNull(9)?.toBooleanStrictOrNull() ?: true,
+                    staleAfterMs=it.getOrNull(8)?.toLongOrNull(),enabled=it.getOrNull(9)?.toBooleanStrictOrNull() ?: true,
                     paused=it.getOrNull(10).toBoolean()) }) })
     }
 }
@@ -196,6 +197,12 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
 }
 
 @Composable private fun MetricObservationSummary(metric: Metric, observation: MetricObservationContext) {
+    val now by produceState(System.currentTimeMillis(),observation.observedAt,observation.staleAfterMs) {
+        while(observation.observedAt!=null && observation.staleAfterMs!=null) {
+            value=System.currentTimeMillis()
+            delay(1000)
+        }
+    }
     Column(Modifier.testTag("help-observation-${metric.name}"),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.help_observation_title),style=MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.help_observed_at,observation.observedAt?.let(::formatTime) ?: "—"))
@@ -206,8 +213,9 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
         if(observation.source.isNotEmpty()) Text(stringResource(R.string.help_observation_source,observation.source))
         if(observation.reason!="NONE" && observation.reason.isNotEmpty())
             Text(stringResource(R.string.help_observation_reason,observation.reason,metricReadingReason(metric,observation.reason)))
-        if(observation.observedAt!=null)
-            Text(stringResource(if(observation.stale) R.string.help_observation_stale else R.string.help_observation_fresh))
+        if(observation.observedAt!=null && observation.staleAfterMs!=null)
+            Text(stringResource(if(observationStale(observation.observedAt,now,observation.staleAfterMs))
+                R.string.help_observation_stale else R.string.help_observation_fresh))
         if(!observation.enabled) Text(stringResource(R.string.help_observation_disabled))
         if(observation.paused) Text(stringResource(R.string.help_observation_paused))
     }

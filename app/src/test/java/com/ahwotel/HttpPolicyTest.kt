@@ -1,5 +1,6 @@
 package com.ahwotel
 
+import java.net.URI
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.json.JSONObject
@@ -23,7 +24,8 @@ class HttpPolicyTest {
         assertTrue(http.copy(endpoint="https://example.org/v1/metrics").withHttpAllowed(false).otlpEnabled)
     }
     @Test fun httpPermissionDoesNotAllowCredentialsQueriesBadPortsOrOtherSchemes() {
-        listOf("http://a:secret@host/v1/metrics", "http://host/v1/metrics?x=y", "http://host/v1/metrics#x",
+        val endpointWithUserInfo = URI("http", "sample-user:sample-value", "host", -1, "/v1/metrics", null, null).toString()
+        listOf(endpointWithUserInfo, "http://host/v1/metrics?x=y", "http://host/v1/metrics#x",
             "http://host:0/v1/metrics", "http://host:99999/v1/metrics", "ftp://host/v1/metrics").forEach {
             assertFalse(it,Settings.validEndpoint(it,true))
         }

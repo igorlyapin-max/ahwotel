@@ -71,7 +71,10 @@ fun Metric.reading(sample: SampleRow?, headroom: SampleRow?, battery: List<Telem
     return MetricReading(value,time,status,info?.optString(0).orEmpty(),info?.optString(2)?.uppercase() ?: "NONE")
 }
 fun readingStale(time: Long?, now: Long, intervalMs: Long): Boolean =
-    time!=null && (now<time || now-time>intervalMs*2)
+    observationStale(time,now,intervalMs*2)
+
+fun observationStale(time: Long?, now: Long, staleAfterMs: Long): Boolean =
+    time!=null && (now<time || now-time>staleAfterMs)
 
 @Composable fun metricReadingReason(metric: Metric, reason: String): String {
     val core=if(metric.batteryMetric()==null) runCatching { SourceReason.valueOf(reason) }.getOrNull() else null

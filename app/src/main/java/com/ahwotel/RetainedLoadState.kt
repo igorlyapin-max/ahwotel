@@ -3,9 +3,10 @@ package com.ahwotel
 import androidx.compose.runtime.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
 
 data class LoadSnapshot<K, V>(val request: K, val value: V)
 
@@ -39,19 +40,23 @@ fun <K : Any, V> rememberRetainedLoad(
 ): RetainedLoadState<K, V> {
     var state by remember(resetKey) { mutableStateOf(RetainedLoadState<K, V>(pending = request)) }
     val currentRequest by rememberUpdatedState(request)
+    val committedRequest = remember(resetKey) { AtomicReference(request) }
+    committedRequest.set(request)
     val currentLoad by rememberUpdatedState(load)
     val currentError by rememberUpdatedState(onError)
     LaunchedEffect(resetKey,retryKey) {
-        snapshotFlow { currentRequest }.distinctUntilChanged().conflate().collect { target ->
+        snapshotFlow { currentRequest }.distinctUntilChanged().collectLatest { target ->
             state = loadStarted(state, target)
             try {
                 val value = withContext(Dispatchers.IO) { currentLoad(target) }
-                state = loadSucceeded(state, target, value)
+                if(committedRequest.get()==target) state = loadSucceeded(state, target, value)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                state = loadFailed(state,target)
-                currentError(error)
+                if(committedRequest.get()==target) {
+                    state = loadFailed(state,target)
+                    currentError(error)
+                }
             }
         }
     }

@@ -63,6 +63,8 @@ class MetricReadingsTest {
         assertTrue(readingStale(1000,21001,10000))
         assertTrue(readingStale(1000,999,10000))
         assertFalse(readingStale(null,1000,10000))
+        assertFalse(observationStale(1000,21000,20000))
+        assertTrue(observationStale(1000,21001,20000))
     }
     @Test fun probesAndDerivedMetricsUseTheirOwnTimeAndCapability() {
         val s=sample().copy(cpuWait=3.0,probeTime=900,probeInterval=2000,state=0.0)

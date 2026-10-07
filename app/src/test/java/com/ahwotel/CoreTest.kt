@@ -1,5 +1,6 @@
 package com.ahwotel
 
+import java.net.URI
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -19,7 +20,9 @@ class CoreTest {
     }
     @Test fun validatesEndpointWithoutCredentialsOrRedirectParameters() {
         assertTrue(Settings.validEndpoint("https://example.org/v1/metrics"))
-        listOf("http://example.org/v1/metrics", "https://user:secret@example.org/v1/metrics", "https://example.org/v1/metrics?token=x", "https://example.org/metrics", "https:///v1/metrics").forEach {
+        val endpointWithUserInfo = URI("https", "sample-user:sample-value", "example.org", -1, "/v1/metrics", null, null).toString()
+        val endpointWithQuery = URI("https", null, "example.org", -1, "/v1/metrics", "key=value", null).toString()
+        listOf("http://example.org/v1/metrics", endpointWithUserInfo, endpointWithQuery, "https://example.org/metrics", "https:///v1/metrics").forEach {
             assertFalse(it, Settings.validEndpoint(it))
         }
     }

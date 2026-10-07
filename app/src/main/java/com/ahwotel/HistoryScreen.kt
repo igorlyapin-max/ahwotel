@@ -144,10 +144,14 @@ private data class HistoryAvailabilityRequest(val session: String?,val from: Lon
             }
         }
         if(availabilityLoad.snapshot!=null || availability!=null) {
-            items(availableMetrics,key={it.name}) { HistoryChart(app,it,selected,from,end) { navigation(it) } }
+            items(availableMetrics,key={it.name}) { metric ->
+                HistoryChart(app,metric,selected,from,end,availability?.first?.get(metric)) { navigation(metric) }
+            }
             if(unavailableMetrics.isNotEmpty()) item(key="unavailable_history") {
                 UnavailableSection("history",unavailableMetrics.size) {
-                    unavailableMetrics.forEach { HistoryChart(app,it,selected,from,end) { navigation(it) } }
+                    unavailableMetrics.forEach { metric ->
+                        HistoryChart(app,metric,selected,from,end,availability?.first?.get(metric)) { navigation(metric) }
+                    }
                 }
             }
         }
@@ -157,6 +161,7 @@ private data class HistoryAvailabilityRequest(val session: String?,val from: Lon
 private data class HistoryChartRequest(val metric: Metric,val session: String?,val from: Long,val to: Long,val revision: Long)
 
 @Composable fun HistoryChart(app: MonitorApp, metric: Metric, session: String?, from: Long, to: Long,
+    observation: MetricReading? = null,
     navigation: @Composable () -> Unit) {
     var retry by remember(metric,session) { mutableIntStateOf(0) }
     val sampleUpdate by remember { app.db.dao().latest() }.collectAsStateWithLifecycle(initialValue=null)
@@ -177,7 +182,10 @@ private data class HistoryChartRequest(val metric: Metric,val session: String?,v
         metric == Metric.THERMAL -> stringResource(R.string.chart_thermal_states).split("|")
         else -> emptyList()
     }
-    Panel(title, help = metric, helpContext = HelpContext.HISTORY) {
+    val helpObservation=observation?.let {
+        MetricObservationContext(it.time,it.status,it.reason,it.source,staleAfterMs=null)
+    }
+    Panel(title, help = metric, helpContext = HelpContext.HISTORY,helpObservation=helpObservation) {
         navigation()
         if (metric.isProbe) Text(stringResource(if (metric == Metric.CPU_WAIT) R.string.cpu_wait_hint else R.string.probe_delay_hint), style = MaterialTheme.typography.bodySmall)
         MetricPlot(title, points, plotFrom, plotTo, metric.unit,

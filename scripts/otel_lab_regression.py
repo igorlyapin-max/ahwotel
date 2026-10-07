@@ -121,8 +121,17 @@ def main():
     assert float(query(only_standard, t + 1)[0]['value'][1]) == t * 1000, 'fresh point lost'
     assert query(only_standard, t + 60) == [], 'left boundary included'
     assert query(expr, t + 61) == [], 'old point leaked from lookback'
-    evidence.update(passed=True, device=device, time=t, sources=query(expr, t + 1))
+    grafana = f"http://{env['LAB_BIND_ADDRESS']}:{env['GRAFANA_PORT']}"
+    proxy_url = grafana + '/api/datasources/proxy/uid/ahwotel-prometheus/api/v1/query?' + \
+        urllib.parse.urlencode({'query': expr, 'time': t + 1})
+    with HTTP.open(proxy_url, timeout=10) as response:
+        proxy_result = json.load(response)
+        assert proxy_result['status'] == 'success', proxy_result
+        assert {r['metric']['source'] for r in proxy_result['data']['result']} == {'ANDROID_STANDARD', 'OEM'}
+    evidence.update(passed=True, device=device, time=t, sources=query(expr, t + 1),
+                    grafana_proxy_sources=proxy_result['data']['result'])
     evidence['scenarios'].append('exact range boundaries, latest incomplete minute, independent Android/Knox states')
+    evidence['scenarios'].append('Grafana datasource proxy reaches Prometheus and returns both providers')
     out = lab.ROOT / 'artifacts/code13/lab-regression.json'
     out.write_text(json.dumps(evidence, indent=2) + '\n')
     print('PASS: code13 isolated runtime and PromQL regression scenarios')

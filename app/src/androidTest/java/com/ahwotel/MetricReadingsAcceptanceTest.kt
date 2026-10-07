@@ -104,6 +104,19 @@ class MetricReadingsAcceptanceTest {
         ui.onNodeWithText("Current observation").assertIsDisplayed()
         ui.onNodeWithText("Technical source: ACTIVITY_MANAGER").assertIsDisplayed()
     }
+    @Test fun openHelpReclassifiesFreshObservationWithoutANewMeasurement() {
+        val observed=System.currentTimeMillis()
+        val settings=Settings(intervalMs=1000)
+        ui.setContent { MaterialTheme { MetricHelpHost(app) {
+            MonitorMetricCard(Metric.CPU_WAIT,MetricReading(3.0,observed,"AVAILABLE","THREAD_SCHEDSTAT"),settings)
+        } } }
+        ui.onNodeWithTag("metric_help_CPU_WAIT").performClick()
+        ui.onNodeWithText(app.getString(R.string.help_observation_fresh)).assertIsDisplayed()
+        ui.waitUntil(5000) {
+            ui.onAllNodesWithText(app.getString(R.string.help_observation_stale)).fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText(app.getString(R.string.help_observation_stale)).assertIsDisplayed()
+    }
     @Test fun actualCardsRetainHeadroomUseBatteryStreamAndClearOnNewSession(): Unit = runBlocking {
         val now=System.currentTimeMillis()
         val settings=app.settings.value.copy(language="en")

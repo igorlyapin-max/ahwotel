@@ -1,6 +1,6 @@
 # AHWOTel: локальный стенд без аутентификации
 
-Collector Contrib 0.160.0 → Prometheus 3.14.0 → Grafana 13.2.1. Базовые образы и Go builder закреплены по digest в `images.env`. `up` собирает локальные производные образы code13 с небольшим supervisor; установка Go, systemd и доступ контейнеров к Docker socket не нужны. Устройства отправляют OTLP HTTP/protobuf; Grafana предоставляет анонимный Viewer. Сертификаты и учётная запись для просмотра не нужны. Профиль предназначен для доверенной локальной сети.
+Collector Contrib 0.160.0 → Prometheus 3.14.0 → Grafana 13.2.1. Базовые образы и Go builder закреплены по digest в явных stages `supervisor/Dockerfile`; `images.env` хранит тот же Grafana digest только для одноразовой подготовки volume. `up` собирает локальные производные образы code16 с небольшим supervisor; установка Go, systemd и доступ контейнеров к Docker socket не нужны. Устройства отправляют OTLP HTTP/protobuf; Grafana предоставляет анонимный Viewer. Сертификаты и учётная запись для просмотра не нужны. Профиль предназначен для доверенной локальной сети.
 
 ## Запуск
 

@@ -113,12 +113,13 @@ class MainActivity : AppCompatActivity() {
 }
 
 @Composable fun Panel(title: String, help: Metric? = null, helpContext: HelpContext = HelpContext.GENERAL,
+    helpObservation: MetricObservationContext? = null,
     content: @Composable ColumnScope.() -> Unit) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Surface), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                help?.let { MetricHelpButton(it, helpContext) }
+                help?.let { MetricHelpButton(it, helpContext,helpObservation) }
             }
             content()
         }
@@ -226,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         else -> formatValue(reading.value.takeIf { enabled },metric)
     }
     val observation=MetricObservationContext(reading.time,reading.status,reading.reason,reading.source,
-        readingStale(reading.time,System.currentTimeMillis(),metric.intervalMs(settings)),enabled,paused)
+        metric.intervalMs(settings)*2,enabled,paused)
     CompactMetricCard(metricTitle(metric),listOf(CompactMetricValue(value,reading.source)),metric.name,
         help={MetricHelpButton(metric,observation=observation)})
 }

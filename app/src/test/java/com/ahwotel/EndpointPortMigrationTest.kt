@@ -10,6 +10,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.net.URI
 import java.nio.file.Files
 
 @RunWith(RobolectricTestRunner::class)
@@ -40,7 +41,8 @@ class EndpointPortMigrationTest {
     @Test fun recoveryDoesNotHideOtherInvalidSettingsOrEndpoints() {
         val base = Settings(deviceId = "test", otlpEnabled = true, endpoint = "https://collector:0/v1/metrics")
         assertNull(EndpointPortMigration.repaired(SettingsCodec.encode(base.copy(retentionDays = 0))))
-        for (endpoint in listOf("http://collector:0/v1/metrics", "https://u:p@collector:0/v1/metrics",
+        val endpointWithUserInfo = URI("https", "sample-user:sample-value", "collector", 0, "/v1/metrics", null, null).toString()
+        for (endpoint in listOf("http://collector:0/v1/metrics", endpointWithUserInfo,
             "https://collector:0/other", "https://collector:4318/v1/metrics")) {
             assertNull(EndpointPortMigration.repaired(SettingsCodec.encode(base.copy(endpoint = endpoint))))
         }

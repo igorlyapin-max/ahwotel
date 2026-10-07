@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,6 +15,31 @@ spec.loader.exec_module(dashboards)
 
 
 class LabRegressionTest(unittest.TestCase):
+    def test_runtime_images_ports_and_datasource_are_explicit(self):
+        dockerfile = (lab.LAB / 'supervisor' / 'Dockerfile').read_text()
+        compose = (lab.LAB / 'compose.yaml').read_text()
+        images = lab.read_env(lab.LAB / 'images.env')
+        datasource = (lab.LAB / 'grafana' / 'provisioning' / 'datasources' / 'prometheus.yaml').read_text()
+
+        from_lines = [line for line in dockerfile.splitlines() if line.startswith('FROM ')]
+        self.assertEqual(4, len(from_lines))
+        self.assertTrue(all('@sha256:' in line for line in from_lines))
+        self.assertNotIn('FROM ${', dockerfile)
+        for target, runtime_user in (('collector', '10001:10001'), ('prometheus', '65534:65534'), ('grafana', '472:0')):
+            self.assertIn('target: ' + target, compose)
+            stage = re.search(r' AS ' + target + r'\n(?P<body>.*?)(?=\nFROM |\Z)', dockerfile, re.DOTALL)
+            self.assertIsNotNone(stage)
+            self.assertIn('USER ' + runtime_user, stage.group('body'))
+
+        grafana_from = next(line for line in from_lines if line.endswith(' AS grafana'))
+        self.assertEqual(images['GRAFANA_IMAGE'], grafana_from.removeprefix('FROM ').removesuffix(' AS grafana'))
+        self.assertEqual(4, compose.count('host_ip:'))
+        self.assertIn('host_ip: "${LAB_BIND_ADDRESS:?Set the LAN address}"', compose)
+        self.assertIn('host_ip: 127.0.0.1', compose)
+        self.assertIn('url: http://$PROMETHEUS_SERVICE_HOST:$PROMETHEUS_SERVICE_PORT', datasource)
+        self.assertIn('PROMETHEUS_SERVICE_HOST: prometheus', compose)
+        self.assertIn('PROMETHEUS_SERVICE_PORT: "9090"', compose)
+
     def test_queue_status_distinguishes_full_and_missing_metrics(self):
         fixture = ('otelcol_exporter_queue_size{exporter="otlp_http/prometheus"} %s\n'
                    'otelcol_exporter_queue_capacity{exporter="otlp_http/prometheus"} 10000\n')

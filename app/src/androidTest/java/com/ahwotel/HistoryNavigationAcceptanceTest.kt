@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -25,6 +26,7 @@ import java.io.File
 import java.util.Locale
 import com.ahwotel.oem.*
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentLinkedQueue
 
 @RunWith(AndroidJUnit4::class)
 class HistoryNavigationAcceptanceTest {
@@ -109,6 +111,22 @@ class HistoryNavigationAcceptanceTest {
         ui.onNodeWithTag("history_MEMORY_AVAILABLE_zoom_out").assertIsNotEnabled()
         shot("shared-window")
     }
+
+    @Test fun historyHelpShowsRecordedStatusSourceAndReason() {
+        val now=System.currentTimeMillis()
+        ui.setContent { Theme { MetricHelpHost(app) {
+            HistoryChart(app,Metric.CPU,null,now-60_000,now,
+                MetricReading(time=now,status="UNSUPPORTED",source="PROC_STAT",reason="PERMISSION_DENIED")) {}
+        } } }
+        ui.onNodeWithTag("metric_help_CPU").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("help-observation-CPU").fetchSemanticsNodes().isNotEmpty() }
+        if(!ui.onNodeWithTag("help-observation-CPU").isDisplayed())
+            ui.onNodeWithTag("help-content").performScrollToNode(hasTestTag("help-observation-CPU"))
+        ui.onNodeWithTag("help-observation-CPU").assertIsDisplayed()
+        ui.onNodeWithText("UNSUPPORTED",substring=true).assertIsDisplayed()
+        ui.onNodeWithText("PROC_STAT",substring=true).assertIsDisplayed()
+        ui.onNodeWithText("PERMISSION_DENIED",substring=true).assertIsDisplayed()
+    }
     @Test fun emptyHistoryControlsAndNarrowBilingualLabels() {
         var language by mutableStateOf("en")
         ui.setContent {
@@ -157,6 +175,39 @@ class HistoryNavigationAcceptanceTest {
         second.complete(emptyList())
         ui.waitUntil(10000) { ui.onAllNodesWithTag("chart_empty_retained").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText(ui.activity.getString(R.string.no_data)).assertIsDisplayed()
+    }
+
+    @Test fun supersededLoadCannotPublishOrClearTheNewestPendingRequest(): Unit = runBlocking {
+        var request by mutableIntStateOf(1)
+        val first=CompletableDeferred<List<ChartBucket>>()
+        val third=CompletableDeferred<List<ChartBucket>>()
+        val started=ConcurrentLinkedQueue<Int>()
+        ui.setContent { Theme {
+            val state=rememberRetainedLoad("stable",request,load={ key ->
+                started.add(key)
+                when(key) {
+                    1 -> withContext(NonCancellable) { first.await() }
+                    3 -> third.await()
+                    else -> emptyList()
+                }
+            })
+            Text("pending=${state.pending};snapshot=${state.snapshot?.request}",Modifier.testTag("race_state"))
+            MetricPlot("Race",state.snapshot?.value.orEmpty(),0,1000,"%",dataReady=state.snapshot!=null,
+                loading=state.loading,failed=state.failed,testId="race")
+        } }
+        ui.waitUntil(10000) { 1 in started }
+        ui.runOnIdle { request=2;request=3 }
+        ui.waitForIdle()
+        first.complete(listOf(ChartBucket(0,0,"old",500,99.0,99.0,99.0,1)))
+        ui.waitUntil(10000) { 3 in started }
+        ui.onNodeWithTag("race_state").assertTextEquals("pending=3;snapshot=null")
+        ui.onNodeWithTag("chart_loading_race").assertExists()
+        ui.onNodeWithTag("chart_plot_race").assertDoesNotExist()
+        third.complete(listOf(ChartBucket(0,0,"new",500,7.0,7.0,7.0,1)))
+        ui.waitUntil(10000) { runCatching {
+            ui.onNodeWithTag("race_state").assertTextEquals("pending=null;snapshot=3");true
+        }.getOrDefault(false) }
+        ui.onNodeWithTag("chart_plot_race").assertIsDisplayed()
     }
 
     @Test fun failedInitialChartLoadCanBeRetriedWithoutShowingNoData() {

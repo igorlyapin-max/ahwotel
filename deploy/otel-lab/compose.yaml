@@ -4,9 +4,7 @@ services:
     image: ahwotel-lab-collector:code16
     build:
       context: ./supervisor
-      args:
-        GO_IMAGE: ${GO_IMAGE:?Use images.env}
-        BASE_IMAGE: ${COLLECTOR_IMAGE:?Use images.env}
+      target: collector
     user: "10001:10001"
     entrypoint: ["/lab-supervisor", "collector"]
     tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
@@ -16,8 +14,14 @@ services:
       - ./collector.yaml:/etc/otelcol/config.yaml:ro
       - collector-queue:/var/lib/otelcol
     ports:
-      - "${LAB_BIND_ADDRESS:?Set the LAN address}:${OTLP_PORT:-4318}:4318"
-      - "127.0.0.1:${COLLECTOR_HEALTH_PORT:-13133}:13133"
+      - target: 4318
+        published: "${OTLP_PORT:-4318}"
+        host_ip: "${LAB_BIND_ADDRESS:?Set the LAN address}"
+        protocol: tcp
+      - target: 13133
+        published: "${COLLECTOR_HEALTH_PORT:-13133}"
+        host_ip: 127.0.0.1
+        protocol: tcp
     restart: unless-stopped
     stop_grace_period: 15s
     mem_limit: 256m
@@ -29,9 +33,7 @@ services:
     image: ahwotel-lab-prometheus:code16
     build:
       context: ./supervisor
-      args:
-        GO_IMAGE: ${GO_IMAGE:?Use images.env}
-        BASE_IMAGE: ${PROMETHEUS_IMAGE:?Use images.env}
+      target: prometheus
     entrypoint: ["/lab-supervisor", "prometheus"]
     tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
     command:
@@ -46,7 +48,11 @@ services:
       - ./.runtime/policy:/etc/ahwotel-policy:ro
       - ./.runtime/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - prometheus-data:/prometheus
-    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    ports:
+      - target: 9090
+        published: "${PROMETHEUS_PORT:-9090}"
+        host_ip: 127.0.0.1
+        protocol: tcp
     restart: unless-stopped
     stop_grace_period: 15s
     mem_limit: ${PROMETHEUS_MEMORY_LIMIT:-2g}
@@ -58,9 +64,7 @@ services:
     image: ahwotel-lab-grafana:code16
     build:
       context: ./supervisor
-      args:
-        GO_IMAGE: ${GO_IMAGE:?Use images.env}
-        BASE_IMAGE: ${GRAFANA_IMAGE:?Use images.env}
+      target: grafana
     entrypoint: ["/lab-supervisor", "grafana"]
     tmpfs: ["/run/ahwotel:rw,noexec,nosuid,size=1m,mode=1777"]
     environment:
@@ -75,12 +79,18 @@ services:
       GF_LOG_MODE: console
       GF_LOG_CONSOLE_FORMAT: json
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/ahwotel-en.json
+      PROMETHEUS_SERVICE_HOST: prometheus
+      PROMETHEUS_SERVICE_PORT: "9090"
     volumes:
       - ./.runtime/policy:/etc/ahwotel-policy:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    ports: ["${LAB_BIND_ADDRESS:?Set the LAN address}:${GRAFANA_PORT:-3000}:3000"]
+    ports:
+      - target: 3000
+        published: "${GRAFANA_PORT:-3000}"
+        host_ip: "${LAB_BIND_ADDRESS:?Set the LAN address}"
+        protocol: tcp
     restart: unless-stopped
     stop_grace_period: 15s
     mem_limit: ${GRAFANA_MEMORY_LIMIT:-1g}

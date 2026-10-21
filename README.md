@@ -8,7 +8,7 @@
 
 Готовая презентация с иллюстрациями: [PowerPoint (.pptx)](docs/AHWOTel-Project-Overview.pptx) · [PDF для просмотра](docs/AHWOTel-Project-Overview.pdf). Текст и схемы редактируются, заметки докладчика включены в PPTX.
 
-Текущая Git-поставка — **00.00.00.05**, `versionCode=21`, Room **5**. Добавлены переносимые deployment profiles, управляемая read-only политика MDM, расширенные Battery/Storage/CPU/IO показатели, сворачиваемые недоступные группы и навигация непосредственно на исторических графиках. Профили не содержат идентификатор устройства, историю, очередь и секреты; правила импорта, ревизий и будущего mTLS описаны в [docs/deployment-profile.md](docs/deployment-profile.md). Функциональные сценарии проверены acceptance-тестами на Redmi до финального изменения только метаданных версии. Контейнеры локального OTEL-стенда остаются `unverified-local`; проверенная CI/registry-поставка пока не реализована.
+Текущая Git-поставка — **00.00.00.08**, `versionCode=26`, Room **5**. Добавлен операторский SOTI API workflow для контролируемого снятия корпоративных устройств с Exchange quarantine: read-only inspection, отдельный approval, повторная проверка перед действием и OTLP audit sink. Android-поведение и схема Room не менялись. Контейнеры локального OTEL-стенда остаются `unverified-local`; проверенная CI/registry-поставка пока не реализована.
 
 Предыдущая Git-поставка — **00.00.00.02**, `versionCode=11`, Room **4**. Включает OEM/Knox, графики с осями, исправленный таймер, независимые Battery/Self Telemetry и исправления review. При установке на Samsung история и настройки сохранены; непрерывный сбор возобновлён новой сессией. На устройстве прошли 20 отдельных native-сценариев, включая OTLP с локальным HTTPS mock server. После подключения Wi-Fi часы сменились с 2018 на 2026 год и старые записи удалились по retention; резервные копии сохранены на компьютере. Результаты: [VALIDATION-samsung-code11.md](docs/VALIDATION-samsung-code11.md). Состав Git-поставки: [VALIDATION-00.00.00.02.md](docs/VALIDATION-00.00.00.02.md).
 
@@ -199,3 +199,12 @@ Stop и административное отключение прекращаю
 При проверке code16 обнаружен cgroup OOM Grafana с прежним лимитом 384 MiB. Стенд использует настраиваемый `GRAFANA_MEMORY_LIMIT=1g`; неуспешный прогон сохраняется отдельно, после применения нового лимита суточная проверка начинается с нуля.
 
 Git-поставка `00.00.00.04` / APK code17: [состав, проверки и границы поставки](docs/VALIDATION-00.00.00.04.md). Физические проверки и текущий суточный прогон относятся к установленному code16.
+
+## SOTI Exchange quarantine operator tool
+
+Разовый серверный скрипт `scripts/soti_exchange_access.py` формирует список
+корпоративных SOTI-устройств в Exchange quarantine и применяет только отдельно
+подтверждённые `AllowExchangeAccess`. Скрипт запускается на административном
+компьютере, не на Android, и не требует ADB или прямых Exchange credentials.
+Настройка авторизации, tenant contract и безопасный workflow описаны в
+[`docs/SOTI-EXCHANGE-ACCESS.md`](docs/SOTI-EXCHANGE-ACCESS.md).

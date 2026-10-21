@@ -32,6 +32,12 @@ processors:
           # Local discontinuity counters are unbounded; timestamps and session identity remain.
           - delete_key(attributes, "segment")
 exporters:
+  file/soti_exchange_audit:
+    path: /var/lib/otelcol/soti-exchange-audit.jsonl
+    rotation:
+      max_megabytes: 10
+      max_days: 14
+      max_backups: 5
   otlp_http/prometheus:
     metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
     timeout: 10s
@@ -57,6 +63,10 @@ service:
                 host: 0.0.0.0
                 port: 8888
   pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [file/soti_exchange_audit]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, transform/lab]

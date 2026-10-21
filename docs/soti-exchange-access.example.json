@@ -1,0 +1,35 @@
+{
+  "baseUrl": "https://soti.example.org/MobiControl/api",
+  "corporateGroupPrefixes": ["/Corporate"],
+  "allowedManagementModes": ["DeviceOwner"],
+  "activeDeviceStatuses": ["Active"],
+  "exchangeReferenceIds": ["REPLACE_FROM_TENANT_RESPONSE"],
+  "quarantineStatuses": ["Quarantined"],
+  "allowedExchangeStatuses": ["Allowed"],
+  "excludedDeviceIds": [],
+  "devicesPath": "devices",
+  "devicePathTemplate": "devices/{deviceId}",
+  "actionPathTemplate": "devices/{deviceId}/actions",
+  "actionContractVerified": false,
+  "actionPayloadTemplate": {
+    "Action": "AllowExchangeAccess",
+    "ReferenceId": "{referenceId}"
+  },
+  "fields": {
+    "deviceId": "DeviceId",
+    "groupPath": "GroupPath",
+    "managementMode": "ManagementMode",
+    "deviceStatus": "Status",
+    "exchangeAccess": "ExchangeOnlineEmailAccess",
+    "exchangeReferenceId": "ReferenceId",
+    "exchangeStatus": "Status"
+  },
+  "reportTtlMinutes": 30,
+  "requestTimeoutSeconds": 20,
+  "verifyTimeoutSeconds": 60,
+  "verifyPollSeconds": 3,
+  "_commentDiagnostic": "Allowed: Off | Basic | Verbose. Safe default: Off.",
+  "diagnostic": "Off",
+  "_commentActionContractVerified": "Allowed: false | true. Keep false until tenant-local Swagger is checked.",
+  "otlpLogsEndpoint": "http://collector.example.org:4318/v1/logs"
+}

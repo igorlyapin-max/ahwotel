@@ -202,9 +202,15 @@ Git-поставка `00.00.00.04` / APK code17: [состав, проверки
 
 ## SOTI Exchange quarantine operator tool
 
-Разовый серверный скрипт `scripts/soti_exchange_access.py` формирует список
-корпоративных SOTI-устройств в Exchange quarantine и применяет только отдельно
-подтверждённые `AllowExchangeAccess`. Скрипт запускается на административном
-компьютере, не на Android, и не требует ADB или прямых Exchange credentials.
+Разовые серверные скрипты `scripts/soti_exchange_access.py` и
+`scripts/soti_exchange_access.ps1` формируют список корпоративных SOTI-устройств
+в Exchange quarantine и применяют только отдельно подтверждённые
+`AllowExchangeAccess`. Скрипты запускаются на административном компьютере, не на
+Android, и не требуют ADB или прямых Exchange credentials. Самостоятельные
+PowerShell-варианты доступны для PowerShell 7.2+ и штатного Windows PowerShell
+5.1. Они используют тот же JSON-конфиг и взаимозаменяемые inspection/approval
+artifacts; вариант 5.1 запускается только на Windows.
 Настройка авторизации, tenant contract и безопасный workflow описаны в
 [`docs/SOTI-EXCHANGE-ACCESS.md`](docs/SOTI-EXCHANGE-ACCESS.md).
+Статус проверки Windows PowerShell 5.1 описан в
+[`docs/VALIDATION-SOTI-EXCHANGE-ACCESS-POWERSHELL-5.1.md`](docs/VALIDATION-SOTI-EXCHANGE-ACCESS-POWERSHELL-5.1.md).

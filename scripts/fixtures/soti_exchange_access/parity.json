@@ -1,0 +1,51 @@
+{
+  "config": {
+    "baseUrl": "https://soti.example.test/MobiControl/api",
+    "corporateGroupPrefixes": ["/Corporate", "/Корпоративные"],
+    "allowedManagementModes": ["DeviceOwner"],
+    "activeDeviceStatuses": ["Active"],
+    "exchangeReferenceIds": ["exchange-main"],
+    "quarantineStatuses": ["Quarantined"],
+    "allowedExchangeStatuses": ["Allowed"],
+    "excludedDeviceIds": [],
+    "devicesPath": "devices",
+    "devicePathTemplate": "devices/{deviceId}",
+    "actionPathTemplate": "devices/{deviceId}/actions",
+    "actionContractVerified": true,
+    "actionPayloadTemplate": {
+      "Action": "AllowExchangeAccess",
+      "ReferenceId": "{referenceId}"
+    },
+    "fields": {
+      "deviceId": "DeviceId",
+      "groupPath": "GroupPath",
+      "managementMode": "ManagementMode",
+      "deviceStatus": "Status",
+      "exchangeAccess": "ExchangeOnlineEmailAccess",
+      "exchangeReferenceId": "ReferenceId",
+      "exchangeStatus": "Status"
+    },
+    "reportTtlMinutes": 30,
+    "requestTimeoutSeconds": 5,
+    "verifyTimeoutSeconds": 1,
+    "verifyPollSeconds": 1,
+    "diagnostic": "Off",
+    "otlpLogsEndpoint": "http://127.0.0.1:4318/v1/logs"
+  },
+  "device": {
+    "DeviceId": "device-01",
+    "GroupPath": "/Корпоративные/Tablets",
+    "ManagementMode": "DeviceOwner",
+    "Status": "Active",
+    "ExchangeOnlineEmailAccess": [
+      {
+        "ReferenceId": "exchange-main",
+        "Status": "Quarantined"
+      }
+    ]
+  },
+  "generatedAt": "2026-10-22T10:00:00Z",
+  "expiresAt": "2026-10-22T10:30:00Z",
+  "expectedPolicyFingerprint": "2a76cfd34efa73e5ddfc401a19c1c8a5eeaa1f05192b37bcb3ecc41b76d3f223",
+  "expectedSnapshotId": "c40e26949b4602b138e27304c23cce84e1708988e9eebc20edc13c0f7a3dfec2"
+}

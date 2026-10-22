@@ -1,9 +1,13 @@
 # SOTI Exchange access operator tool
 
-`scripts/soti_exchange_access.py` is a one-shot administrative tool. It runs on
-an operator workstation or automation VM that can reach the SOTI MobiControl API
-and the OTLP audit endpoint. It does not run on Android, does not use ADB or Knox,
-and does not connect directly to Exchange.
+`scripts/soti_exchange_access.py`, `scripts/soti_exchange_access.ps1` and
+`scripts/soti_exchange_access_5_1.ps1` are standalone one-shot administrative
+tools. They run on an operator workstation or automation VM that can reach the
+SOTI MobiControl API and the OTLP audit endpoint. They do not run on Android, do
+not use ADB or Knox, and do not connect directly to Exchange. Use the first
+PowerShell script with PowerShell 7.2+ and the `_5_1` script with the built-in
+Windows PowerShell 5.1. Neither PowerShell variant requires Python or additional
+modules.
 
 ## SOTI authorization
 
@@ -33,6 +37,12 @@ chmod 600 "$SOTI_CLIENT_SECRET_FILE" "$SOTI_PASSWORD_FILE"
 
 The tool validates the SOTI TLS certificate. There is no insecure TLS option.
 
+PowerShell uses the same environment variable names. On Windows, create secret
+files on NTFS and remove inherited access for broad identities such as `Users`,
+`Authenticated Users` and `Everyone`. The script rejects a secret file when one
+of those identities has read access. Do not put either secret directly in the
+command line, script or JSON configuration.
+
 ## Tenant contract preflight
 
 Copy `docs/soti-exchange-access.example.json` outside Git and edit it. Field
@@ -54,6 +64,22 @@ Check authentication and read access on one pilot device:
 python3 scripts/soti_exchange_access.py \
   --config /secure/soti-exchange.json \
   auth-check --device-id '<SOTI_DEVICE_ID>'
+```
+
+PowerShell equivalent:
+
+```powershell
+pwsh ./scripts/soti_exchange_access.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command auth-check -DeviceId '<SOTI_DEVICE_ID>'
+```
+
+Windows PowerShell 5.1 equivalent:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -File .\scripts\soti_exchange_access_5_1.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command auth-check -DeviceId '<SOTI_DEVICE_ID>'
 ```
 
 ## Inspect, approve, apply, verify
@@ -99,6 +125,51 @@ python3 scripts/soti_exchange_access.py \
   --output /secure/verification.json
 ```
 
+The same workflow in PowerShell is:
+
+```powershell
+pwsh ./scripts/soti_exchange_access.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command inspect -Output C:\secure\inspection.json
+
+pwsh ./scripts/soti_exchange_access.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command apply -Report C:\secure\inspection.json `
+  -Approvals C:\secure\approved.json `
+  -Output C:\secure\apply-result.json -Confirm APPLY
+
+pwsh ./scripts/soti_exchange_access.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command verify -Report C:\secure\inspection.json `
+  -Approvals C:\secure\approved.json `
+  -Output C:\secure\verification.json
+```
+
+For Windows PowerShell 5.1, keep the same arguments and select the dedicated
+script:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -File .\scripts\soti_exchange_access_5_1.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command inspect -Output C:\secure\inspection.json
+
+powershell.exe -NoLogo -NoProfile -File .\scripts\soti_exchange_access_5_1.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command apply -Report C:\secure\inspection.json `
+  -Approvals C:\secure\approved.json `
+  -Output C:\secure\apply-result.json -Confirm APPLY
+
+powershell.exe -NoLogo -NoProfile -File .\scripts\soti_exchange_access_5_1.ps1 `
+  -Config C:\secure\soti-exchange.json `
+  -Command verify -Report C:\secure\inspection.json `
+  -Approvals C:\secure\approved.json `
+  -Output C:\secure\verification.json
+```
+
+Python, PowerShell 7 and Windows PowerShell 5.1 use the same schema version and
+canonical hashing rules. An inspection report produced by any implementation can
+be approved, applied and verified by another without rewriting the artifact.
+
 `apply` requires a reachable `otlpLogsEndpoint` before the first action. The
 current trusted-LAN lab uses OTLP/HTTP JSON with `auth=none`; production routing
 can terminate authentication at a deployment-owned collector or proxy. Every
@@ -113,3 +184,20 @@ the operator record for a specific run.
 If an action request has an ambiguous transport failure, the tool re-reads the
 device once and never blindly repeats the POST. A still-quarantined result is a
 manual-review failure.
+
+Run the focused PowerShell checks with:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./scripts/test_soti_exchange_access.ps1
+```
+
+Run the Windows PowerShell 5.1 checks on Windows with:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -File .\scripts\test_soti_exchange_access_5_1.ps1
+```
+
+The 5.1 test verifies the shared parity fixture, policy and snapshot hashes,
+fail-closed action rules, redaction, OTLP responses, atomic output and NTFS ACLs.
+PowerShell older than 5.1 and running the `_5_1` CLI under PowerShell Core are not
+supported.

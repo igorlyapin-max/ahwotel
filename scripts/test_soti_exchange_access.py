@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -81,6 +82,45 @@ class AmbiguousClient(FakeClient):
 
 
 class SotiExchangeAccessTest(unittest.TestCase):
+    def test_windows_powershell_51_source_uses_framework_compatible_contract(self):
+        scripts_dir = Path(__file__).parent
+        main = (scripts_dir / "soti_exchange_access_5_1.ps1").read_text(encoding="ascii")
+        tests = (scripts_dir / "test_soti_exchange_access_5_1.ps1").read_text(encoding="ascii")
+        self.assertTrue(main.startswith("#requires -Version 5.1"))
+        self.assertTrue(tests.startswith("#requires -Version 5.1"))
+        for forbidden in (
+            "System.Text.Json", "Text.Json", "HashData", "ToHexString",
+            "UnixFileMode", "FileSystemAclExtensions", "$IsWindows",
+            "ToUnixTimeMilliseconds", "ForEach-Object -Parallel", "-AsHashtable",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, main)
+                self.assertNotIn(forbidden, tests)
+        for required in (
+            "System.Web.Script.Serialization.JavaScriptSerializer",
+            "[Security.Cryptography.SHA256]::Create()",
+            "[IO.File]::SetAccessControl",
+            "[Net.SecurityProtocolType]::Tls12",
+            "Add-Type -AssemblyName System.Net.Http",
+            "windows_powershell_5_1_required",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, main)
+
+    def test_cross_runtime_parity_fixture(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "soti_exchange_access" / "parity.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        cfg = access.validate_config(fixture["config"])
+        self.assertEqual(fixture["expectedPolicyFingerprint"], access.policy_fingerprint(cfg))
+        candidates = [{"deviceId": fixture["device"]["DeviceId"], "referenceId": "exchange-main"}]
+        self.assertEqual(
+            fixture["expectedSnapshotId"],
+            access.snapshot_id(
+                fixture["expectedPolicyFingerprint"], fixture["generatedAt"], fixture["expiresAt"], candidates
+            ),
+        )
+        self.assertEqual("candidate", access.evaluate_device(fixture["device"], cfg)["decision"])
+
     def test_candidate_requires_all_corporate_conditions(self):
         cfg = config()
         self.assertEqual("candidate", access.evaluate_device(device(), cfg)["decision"])

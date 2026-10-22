@@ -403,7 +403,10 @@ class SotiClient:
 
     def _raw(self, method: str, path: str, *, data: bytes | None, headers: dict[str, str]) -> Any:
         request = urllib.request.Request(self.base_url + "/" + path.lstrip("/"), data=data, method=method, headers={**headers, "Accept": "application/json"})
-        self.logger.diagnostic("soti_request", method=method, path=path)
+        self.logger.diagnostic(
+            "soti_request", method=method,
+            pathHash="sha256:" + hashlib.sha256(path.encode()).hexdigest()[:12],
+        )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout, context=ssl.create_default_context()) as response:
                 raw = response.read()

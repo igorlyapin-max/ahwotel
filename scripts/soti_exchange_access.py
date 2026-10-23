@@ -138,9 +138,13 @@ def validate_config(raw: Any) -> dict[str, Any]:
     config["baseUrl"] = validate_url(config.get("baseUrl"), name="baseUrl", require_api_path=True)
     for name in (
         "corporateGroupPrefixes", "allowedManagementModes", "activeDeviceStatuses",
-        "exchangeReferenceIds", "quarantineStatuses", "allowedExchangeStatuses",
+        "quarantineStatuses", "allowedExchangeStatuses",
     ):
         require_string_list(config, name)
+    reference_ids = config.get("exchangeReferenceIds", [])
+    if not isinstance(reference_ids, list) or not all(isinstance(item, str) and item for item in reference_ids):
+        raise ContractError("invalid_config:exchangeReferenceIds")
+    config["exchangeReferenceIds"] = reference_ids
     fields = config.get("fields")
     required_fields = {
         "deviceId", "groupPath", "managementMode", "deviceStatus", "exchangeAccess",
@@ -177,7 +181,9 @@ def validate_config(raw: Any) -> dict[str, Any]:
     if config.get("actionContractVerified") and not payload:
         raise ContractError("verified_action_requires_payload_template")
     endpoint = config.get("otlpLogsEndpoint")
-    if endpoint:
+    if endpoint is not None:
+        if not isinstance(endpoint, str) or not endpoint:
+            raise ContractError("invalid_otlpLogsEndpoint")
         parsed = urllib.parse.urlsplit(endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
             raise ContractError("invalid_otlpLogsEndpoint")
@@ -263,11 +269,13 @@ def evaluate_device(device: dict[str, Any], config: dict[str, Any]) -> dict[str,
     records = dotted(device, fields["exchangeAccess"])
     if not isinstance(records, list):
         raise ContractError("exchange_access_must_be_array")
+    reference_allowlist = config["exchangeReferenceIds"]
     matching = []
     for record in records:
         if not isinstance(record, dict):
             raise ContractError("exchange_access_contains_non_object")
-        if str(dotted(record, fields["exchangeReferenceId"])) in config["exchangeReferenceIds"]:
+        reference_id = str(dotted(record, fields["exchangeReferenceId"]))
+        if not reference_allowlist or reference_id in reference_allowlist:
             matching.append(record)
     if len(matching) != 1:
         return {**base, "decision": "manual", "reason": "exchange_record_count", "recordCount": len(matching)}
@@ -319,19 +327,15 @@ class EventLogger:
         self.timeout = config["requestTimeoutSeconds"]
         self.run_id = run_id
 
-    def emit(self, event: str, *, severity: str = "INFO", required_sink: bool = False, **metadata: Any) -> None:
+    def emit(self, event: str, *, severity: str = "INFO", **metadata: Any) -> None:
         record = {"timestamp": iso(utc_now()), "severity": severity, "event": event, "runId": self.run_id, "metadata": redact(metadata)}
         print(json.dumps(record, sort_keys=True, separators=(",", ":")), file=sys.stderr if severity in {"ERROR", "WARN"} else sys.stdout, flush=True)
         if self.endpoint:
             try:
                 self._send_otlp(record)
-            except Exception as error:
-                if required_sink:
-                    raise ApiError("external_audit_sink_unavailable") from error
+            except Exception:
                 warning = {"timestamp": iso(utc_now()), "severity": "WARN", "event": "audit_sink_unavailable", "runId": self.run_id}
                 print(json.dumps(warning, sort_keys=True, separators=(",", ":")), file=sys.stderr, flush=True)
-        elif required_sink:
-            raise ContractError("apply_requires_otlpLogsEndpoint")
 
     def diagnostic(self, event: str, *, verbose: bool = False, **metadata: Any) -> None:
         if self.level == "Verbose" or (self.level == "Basic" and not verbose):
@@ -507,7 +511,11 @@ def wait_for_allowed(client: Any, config: dict[str, Any], device_id: str, refere
 def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, approvals: list[dict[str, str]]) -> dict[str, Any]:
     if not config["actionContractVerified"]:
         raise ContractError("action_contract_not_verified")
-    logger.emit("apply_audit_preflight", required_sink=True, approvals=len(approvals))
+    logger.emit(
+        "apply_audit_preflight",
+        approvals=len(approvals),
+        auditSink="stdout+otlp" if getattr(logger, "endpoint", None) else "stdout",
+    )
     results = []
     for approved in approvals:
         device_id, reference_id = approved["deviceId"], approved["referenceId"]

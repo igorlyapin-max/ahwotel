@@ -24,10 +24,10 @@ No PowerShell runtime files are included in Git.
 
 ```text
 pwsh -NoLogo -NoProfile -File scripts/test_soti_exchange_access.ps1
-38 PowerShell assertions: PASS
+45 PowerShell assertions: PASS
 
 python3 -m unittest discover -s scripts -p 'test_*.py'
-30 tests: PASS
+34 tests: PASS
 
 PowerShell parser diagnostics
 0 errors
@@ -37,7 +37,7 @@ The shared fixture proves identical Python/PowerShell `policyFingerprint` and
 `snapshotId`, including non-ASCII configuration content. Focused scenarios cover
 corporate eligibility, ordinal string matching, group boundaries, duplicate
 Exchange records, report expiry, policy changes, duplicate approvals,
-idempotency, ambiguous POST without retry, required audit sink, recursive
+idempotency, ambiguous POST without retry, optional best-effort OTLP audit, recursive
 redaction, atomic `0600` output and Unix secret-file permissions.
 
 ## Local HTTPS end-to-end scenario

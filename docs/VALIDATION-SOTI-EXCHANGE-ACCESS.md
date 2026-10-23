@@ -18,7 +18,7 @@ python3 scripts/test_soti_exchange_access.py
 14 tests: OK
 
 python3 -m unittest discover -s scripts -p 'test_*.py'
-30 tests: OK
+34 tests: OK
 
 python3 -m py_compile scripts/soti_exchange_access.py scripts/test_soti_exchange_access.py
 PASS

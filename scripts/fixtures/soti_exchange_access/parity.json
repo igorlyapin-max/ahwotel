@@ -4,7 +4,7 @@
     "corporateGroupPrefixes": ["/Corporate", "/Корпоративные"],
     "allowedManagementModes": ["DeviceOwner"],
     "activeDeviceStatuses": ["Active"],
-    "exchangeReferenceIds": ["exchange-main"],
+    "exchangeReferenceIds": [],
     "quarantineStatuses": ["Quarantined"],
     "allowedExchangeStatuses": ["Allowed"],
     "excludedDeviceIds": [],
@@ -30,7 +30,7 @@
     "verifyTimeoutSeconds": 1,
     "verifyPollSeconds": 1,
     "diagnostic": "Off",
-    "otlpLogsEndpoint": "http://127.0.0.1:4318/v1/logs"
+    "otlpLogsEndpoint": null
   },
   "device": {
     "DeviceId": "device-01",
@@ -46,6 +46,6 @@
   },
   "generatedAt": "2026-10-22T10:00:00Z",
   "expiresAt": "2026-10-22T10:30:00Z",
-  "expectedPolicyFingerprint": "2a76cfd34efa73e5ddfc401a19c1c8a5eeaa1f05192b37bcb3ecc41b76d3f223",
-  "expectedSnapshotId": "c40e26949b4602b138e27304c23cce84e1708988e9eebc20edc13c0f7a3dfec2"
+  "expectedPolicyFingerprint": "fc56b0068115019351f22083450ba420b3a4348057c4222d7a5e02c6b7e89727",
+  "expectedSnapshotId": "f7b55d5757e2b76f048a381d2596755f9eba6f7d2d3e154dcbd97266ec5d74a7"
 }

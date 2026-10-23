@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -135,6 +136,27 @@ class SotiExchangeAccessTest(unittest.TestCase):
             with self.subTest(reason=reason):
                 self.assertEqual(reason, access.evaluate_device(value, cfg)["reason"])
 
+    def test_exchange_reference_allowlist_is_optional(self):
+        cfg = config(exchangeReferenceIds=[])
+        decision = access.evaluate_device(device(), cfg)
+        self.assertEqual("candidate", decision["decision"])
+        self.assertEqual("exchange-main", decision["referenceId"])
+        ambiguous = access.evaluate_device(device(records=2), cfg)
+        self.assertEqual("manual", ambiguous["decision"])
+        self.assertEqual("exchange_record_count", ambiguous["reason"])
+        self.assertEqual(2, ambiguous["recordCount"])
+        without_key = dict(cfg)
+        without_key.pop("exchangeReferenceIds")
+        normalized = access.validate_config(without_key)
+        self.assertEqual([], normalized["exchangeReferenceIds"])
+        self.assertEqual(access.policy_fingerprint(cfg), access.policy_fingerprint(normalized))
+
+    def test_example_config_defaults_to_optional_reference_and_otlp(self):
+        example = json.loads((Path(__file__).parents[1] / "docs/soti-exchange-access.example.json").read_text())
+        cfg = access.validate_config(example)
+        self.assertEqual([], cfg["exchangeReferenceIds"])
+        self.assertIsNone(cfg.get("otlpLogsEndpoint"))
+
     def test_group_prefix_requires_path_boundary(self):
         self.assertFalse(access.group_matches("/Corporate-External", ["/Corporate"]))
         self.assertTrue(access.group_matches("/Corporate/Tablets", ["/Corporate"]))
@@ -213,11 +235,30 @@ class SotiExchangeAccessTest(unittest.TestCase):
         self.assertRegex(value["deviceId"], r"^sha256:[0-9a-f]{12}$")
         self.assertEqual(1, value["count"])
 
-    def test_apply_requires_external_audit_sink(self):
+    def test_apply_allows_stdout_only_audit(self):
         cfg = config(otlpLogsEndpoint=None)
         logger = access.EventLogger(cfg, "run-1")
-        with self.assertRaisesRegex(access.ContractError, "otlpLogsEndpoint"):
-            access.apply_approvals(FakeClient([device()]), cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
+        client = FakeClient([device()])
+        with patch("sys.stdout", new_callable=io.StringIO) as output:
+            result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
+        self.assertEqual("allowed", result["results"][0]["outcome"])
+        self.assertEqual([("d-1", "exchange-main")], client.actions)
+        self.assertIn('"auditSink":"stdout"', output.getvalue())
+
+    def test_configured_otlp_failure_warns_and_apply_continues(self):
+        cfg = config()
+        logger = access.EventLogger(cfg, "run-1")
+        client = FakeClient([device()])
+        with patch.object(logger, "_send_otlp", side_effect=OSError("collector unavailable")), \
+                patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO) as errors:
+            result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
+        self.assertEqual("allowed", result["results"][0]["outcome"])
+        self.assertEqual([("d-1", "exchange-main")], client.actions)
+        self.assertIn("audit_sink_unavailable", errors.getvalue())
+
+    def test_empty_otlp_endpoint_is_rejected(self):
+        with self.assertRaisesRegex(access.ContractError, "invalid_otlpLogsEndpoint"):
+            config(otlpLogsEndpoint="")
 
     def test_otlp_partial_failure_is_rejected(self):
         access.validate_otlp_response(b'{"partialSuccess":{}}')

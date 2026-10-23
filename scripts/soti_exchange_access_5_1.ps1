@@ -351,8 +351,13 @@ function Test-StringInList {
 }
 
 function Assert-StringArray {
-    param([Parameter(Mandatory)][System.Collections.IDictionary] $Map, [Parameter(Mandatory)][string] $Name)
-    if (-not $Map.Contains($Name) -or -not (Test-IsArray $Map[$Name]) -or $Map[$Name].Count -eq 0) {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary] $Map,
+        [Parameter(Mandatory)][string] $Name,
+        [switch] $AllowEmpty
+    )
+    if (-not $Map.Contains($Name) -or -not (Test-IsArray $Map[$Name]) -or
+        (-not $AllowEmpty -and $Map[$Name].Count -eq 0)) {
         Throw-ContractError "invalid_config:$Name"
     }
     foreach ($item in $Map[$Name]) {
@@ -427,9 +432,13 @@ function Assert-Config {
     foreach ($key in $Raw.Keys) { $config[[string] $key] = $Raw[$key] }
     $config['baseUrl'] = Assert-Url (Get-MapValue $config 'baseUrl') 'baseUrl' -RequireApiPath
     foreach ($name in @('corporateGroupPrefixes', 'allowedManagementModes', 'activeDeviceStatuses',
-        'exchangeReferenceIds', 'quarantineStatuses', 'allowedExchangeStatuses')) {
+        'quarantineStatuses', 'allowedExchangeStatuses')) {
         Assert-StringArray $config $name
     }
+    $referenceIds = Get-MapValue $config 'exchangeReferenceIds' ([System.Collections.Generic.List[object]]::new())
+    if (-not (Test-IsArray $referenceIds)) { Throw-ContractError 'invalid_config:exchangeReferenceIds' }
+    $config['exchangeReferenceIds'] = $referenceIds
+    Assert-StringArray $config 'exchangeReferenceIds' -AllowEmpty
     $requiredFields = @('deviceId', 'groupPath', 'managementMode', 'deviceStatus', 'exchangeAccess', 'exchangeReferenceId', 'exchangeStatus')
     $fields = Get-MapValue $config 'fields'
     if (-not (Test-IsMap $fields) -or $fields.Count -ne $requiredFields.Count) { Throw-ContractError 'invalid_config:fields' }
@@ -600,10 +609,11 @@ function Test-DeviceEligibility {
     $records = Get-DottedValue $Device $fields['exchangeAccess']
     if (-not (Test-IsArray $records)) { Throw-ContractError 'exchange_access_must_be_array' }
     $matching = @()
+    $referenceAllowlist = $Config['exchangeReferenceIds']
     foreach ($record in $records) {
         if (-not (Test-IsMap $record)) { Throw-ContractError 'exchange_access_contains_non_object' }
         $reference = [string] (Get-DottedValue $record $fields['exchangeReferenceId'])
-        if (Test-StringInList $reference $Config['exchangeReferenceIds']) { $matching += $record }
+        if ($referenceAllowlist.Count -eq 0 -or (Test-StringInList $reference $referenceAllowlist)) { $matching += $record }
     }
     if ($matching.Count -ne 1) {
         $result['decision'] = 'manual'; $result['reason'] = 'exchange_record_count'; $result['recordCount'] = [long] $matching.Count
@@ -714,8 +724,7 @@ function Write-Event {
         [Parameter(Mandatory)][System.Collections.IDictionary] $Logger,
         [Parameter(Mandatory)][string] $Event,
         [ValidateSet('INFO', 'WARN', 'ERROR')][string] $Severity = 'INFO',
-        [System.Collections.IDictionary] $Metadata = (New-Map),
-        [switch] $RequiredSink
+        [System.Collections.IDictionary] $Metadata = (New-Map)
     )
     $record = New-Map
     $record['timestamp'] = Get-UtcTimestamp
@@ -732,12 +741,10 @@ function Write-Event {
             else { Send-OtlpRecord $Logger $record }
         }
         catch {
-            if ($RequiredSink) { Throw-ApiError 'external_audit_sink_unavailable' }
             $warning = @{ timestamp = Get-UtcTimestamp; severity = 'WARN'; event = 'audit_sink_unavailable'; runId = $Logger['runId'] }
             [Console]::Error.WriteLine(($warning | ConvertTo-Json -Compress))
         }
     }
-    elseif ($RequiredSink) { Throw-ContractError 'apply_requires_otlpLogsEndpoint' }
 }
 
 function Write-DiagnosticEvent {
@@ -1012,7 +1019,8 @@ function Invoke-ApprovedActions {
     )
     if (-not $Config['actionContractVerified']) { Throw-ContractError 'action_contract_not_verified' }
     $preflight = New-Map; $preflight['approvals'] = [long] $Approved.Count
-    Write-Event $Logger 'apply_audit_preflight' -Metadata $preflight -RequiredSink
+    $preflight['auditSink'] = if ([string]::IsNullOrEmpty([string] $Logger['endpoint'])) { 'stdout' } else { 'stdout+otlp' }
+    Write-Event $Logger 'apply_audit_preflight' -Metadata $preflight
     $results = @()
     foreach ($approvedItem in $Approved) {
         $id = $approvedItem['deviceId']; $referenceId = $approvedItem['referenceId']

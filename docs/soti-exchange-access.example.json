@@ -3,7 +3,8 @@
   "corporateGroupPrefixes": ["/Corporate"],
   "allowedManagementModes": ["DeviceOwner"],
   "activeDeviceStatuses": ["Active"],
-  "exchangeReferenceIds": ["REPLACE_FROM_TENANT_RESPONSE"],
+  "_commentExchangeReferenceIds": "Optional. Empty means use the only ExchangeOnlineEmailAccess record. Multiple matching records require manual review.",
+  "exchangeReferenceIds": [],
   "quarantineStatuses": ["Quarantined"],
   "allowedExchangeStatuses": ["Allowed"],
   "excludedDeviceIds": [],
@@ -31,5 +32,6 @@
   "_commentDiagnostic": "Allowed: Off | Basic | Verbose. Safe default: Off.",
   "diagnostic": "Off",
   "_commentActionContractVerified": "Allowed: false | true. Keep false until tenant-local Swagger is checked.",
-  "otlpLogsEndpoint": "http://collector.example.org:4318/v1/logs"
+  "_commentOtlpLogsEndpoint": "Optional. Null means structured stdout/stderr only. When configured, OTLP delivery failures produce a warning.",
+  "otlpLogsEndpoint": null
 }

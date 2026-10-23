@@ -13,8 +13,8 @@ PowerShell 7 implementations. Android runtime and APK metadata are unchanged.
 The PowerShell 7 parser reports zero syntax errors for both 5.1 files. The Python
 suite statically rejects PowerShell 6/7-only APIs in the 5.1 source and checks the
 required .NET Framework JSON, SHA-256, NTFS ACL, TLS 1.2 and runtime-guard
-contracts. The completed regression evidence is `30 Python tests: PASS` and
-`38 PowerShell 7 assertions: PASS`. Running the 5.1 CLI under PowerShell Core
+contracts. The completed regression evidence is `34 Python tests: PASS` and
+`45 PowerShell 7 assertions: PASS`. Running the 5.1 CLI under PowerShell Core
 fails closed with `windows_powershell_5_1_required` and exit code 2.
 
 ## Pending Windows runtime gate

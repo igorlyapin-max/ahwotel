@@ -53,6 +53,15 @@ the tenant response and Swagger. Settings with a finite set of values:
 - `actionContractVerified`: `false | true`; keep `false` until an administrator
   has compared the action path and payload with tenant-local Swagger.
 
+`exchangeReferenceIds` is optional. Omit it or use an empty array to accept the
+only `ExchangeOnlineEmailAccess` record on an otherwise eligible device. Its
+actual `ReferenceId` is bound into the inspection, approval and action. A
+non-empty list remains an exact allowlist. More than one matching record is
+ambiguous and produces a manual-review decision.
+
+`otlpLogsEndpoint` is also optional. Omit it or use `null` for structured
+stdout/stderr only. An empty string or malformed URL is rejected.
+
 `apply` is blocked while `actionContractVerified` is `false`. Unknown collection
 shapes and paginated responses are rejected. For a tenant that paginates
 `GET /devices`, narrow `devicesPath` with the exact supported tenant filter. The
@@ -170,11 +179,12 @@ Python, PowerShell 7 and Windows PowerShell 5.1 use the same schema version and
 canonical hashing rules. An inspection report produced by any implementation can
 be approved, applied and verified by another without rewriting the artifact.
 
-`apply` requires a reachable `otlpLogsEndpoint` before the first action. The
-current trusted-LAN lab uses OTLP/HTTP JSON with `auth=none`; production routing
-can terminate authentication at a deployment-owned collector or proxy. Every
-event is also emitted as structured JSON to stdout/stderr. Tokens, passwords,
-account data and email fields are masked.
+Every event is emitted as structured JSON to stdout/stderr. When
+`otlpLogsEndpoint` is configured, the tool additionally sends OTLP/HTTP JSON. A
+delivery failure emits `audit_sink_unavailable` to stderr and does not block the
+approved action. The current trusted-LAN lab uses `auth=none`; production routing
+can terminate authentication at a deployment-owned collector or proxy. Tokens,
+passwords, account data and email fields are masked.
 
 The bundled lab stores these audit events in the Collector persistent volume as
 rotated `/var/lib/otelcol/soti-exchange-audit.jsonl` files. This is an operations

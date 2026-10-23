@@ -64,10 +64,18 @@ $insecureUrl = Copy-Map $cfg; $insecureUrl['baseUrl'] = 'http://soti.example.tes
 Assert-ThrowsCode { [void] (Assert-Config $insecureUrl) } 'invalid_https_url:baseUrl'
 $embeddedSecret = Copy-Map $cfg; $embeddedSecret['clientSecret'] = 'forbidden'
 Assert-ThrowsCode { [void] (Assert-Config $embeddedSecret) } 'secrets_or_identity_fields_forbidden_in_config'
+$missingReferences = Copy-Map $cfg; [void] $missingReferences.Remove('exchangeReferenceIds')
+$normalizedReferences = Assert-Config $missingReferences
+Assert-Equal 0 $normalizedReferences['exchangeReferenceIds'].Count 'missing reference allowlist defaults empty'
+Assert-Equal (Get-PolicyFingerprint $cfg) (Get-PolicyFingerprint $normalizedReferences) 'missing and empty reference policy parity'
+$emptyEndpoint = Copy-Map $cfg; $emptyEndpoint['otlpLogsEndpoint'] = ''
+Assert-ThrowsCode { [void] (Assert-Config $emptyEndpoint) } 'invalid_otlpLogsEndpoint'
 
 $decision = Test-DeviceEligibility $device $cfg
 Assert-Equal 'candidate' $decision['decision'] 'corporate quarantined candidate'
 Assert-Equal 'corporate_quarantined' $decision['reason'] 'candidate reason'
+$filteredConfig = Copy-Map $cfg; $filteredConfig['exchangeReferenceIds'] = @('other-exchange')
+Assert-Equal 'exchange_record_count' (Test-DeviceEligibility $device $filteredConfig)['reason'] 'optional allowlist still filters'
 $wrongCase = Copy-Map $device; $wrongCase['ManagementMode'] = 'deviceowner'
 Assert-Equal 'management_mode_not_allowed' (Test-DeviceEligibility $wrongCase $cfg)['reason'] 'ordinal management mode'
 $external = Copy-Map $device; $external['GroupPath'] = '/Corporate-External'
@@ -128,9 +136,18 @@ Assert-ThrowsCode {
     [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $ambiguous -Config $cfg -Logger $sinkLogger -Approved $approved)
 } 'exchange_action_ambiguous_manual_review_required'
 Assert-Equal 1 $script:ActionCount 'ambiguous post not retried'
-Assert-ThrowsCode {
-    [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger (New-TestLogger) -Approved $approved)
-} 'apply_requires_otlpLogsEndpoint'
+$script:StateDevice = Copy-Map $device
+$script:ActionCount = 0
+$stdoutResult = Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger (New-TestLogger) -Approved $approved
+Assert-Equal 1 $script:ActionCount 'stdout-only action count'
+Assert-Equal 'allowed' $stdoutResult['results'][0]['outcome'] 'stdout-only apply outcome'
+$script:StateDevice = Copy-Map $device
+$script:ActionCount = 0
+$failingSinkLogger = New-TestLogger -WithSink
+$failingSinkLogger['sendOtlp'] = { param($record) throw 'collector unavailable' }
+$warningResult = Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger $failingSinkLogger -Approved $approved
+Assert-Equal 1 $script:ActionCount 'unavailable OTLP does not block action'
+Assert-Equal 'allowed' $warningResult['results'][0]['outcome'] 'unavailable OTLP apply outcome'
 $unverified = Copy-Map $cfg; $unverified['actionContractVerified'] = $false
 Assert-ThrowsCode {
     [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $unverified -Logger $sinkLogger -Approved $approved)

@@ -140,6 +140,9 @@
     <string name="chart_load_failed">Could not refresh the chart. The last loaded data remains visible.</string>
     <string name="load_failed">Could not load the selected data.</string>
     <string name="refreshing_data">Refreshing data…</string>
+    <string name="history_refresh">Refresh history</string>
+    <string name="history_last_refreshed">Data snapshot: %1$s</string>
+    <string name="history_refresh_failed">Could not refresh history. The previous data is still shown.</string>
     <string name="retry">Retry</string>
     <string name="help_observation_title">Current observation</string>
     <string name="help_observed_at">Measured at: %1$s</string>

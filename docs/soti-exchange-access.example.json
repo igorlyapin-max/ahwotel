@@ -33,5 +33,7 @@
   "diagnostic": "Off",
   "_commentActionContractVerified": "Allowed: false | true. Keep false until tenant-local Swagger is checked.",
   "_commentOtlpLogsEndpoint": "Optional. Null means structured stdout/stderr only. When configured, OTLP delivery failures produce a warning.",
-  "otlpLogsEndpoint": null
+  "otlpLogsEndpoint": null,
+  "_commentAuditLogPath": "Optional for read-only commands. Required for apply; use a private local JSONL file outside Git.",
+  "auditLogPath": null
 }

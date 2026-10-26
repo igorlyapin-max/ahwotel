@@ -41,6 +41,10 @@ data class OutboxRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val crea
 
 data class ChartBucket(val bucket: Long, val segment: Int, val sessionId: String,
     val time: Long, val low: Double?, val high: Double?, val mean: Double?, val count: Int)
+data class MetricChartBucket(val metric: String,val bucket: Long,val segment: Int,val sessionId: String,
+    val time: Long,val low: Double?,val high: Double?,val mean: Double?,val count: Int) {
+    fun chartBucket()=ChartBucket(bucket,segment,sessionId,time,low,high,mean,count)
+}
 
 enum class Metric(val column: String, val wire: String, val unit: String) {
     CPU("cpu", "device.cpu.utilization", "%"),
@@ -81,13 +85,17 @@ enum class Metric(val column: String, val wire: String, val unit: String) {
 @Dao
 interface MonitorDao {
     @RawQuery suspend fun hasValue(query: SupportSQLiteQuery): Int
+    @RawQuery suspend fun presence(query: SupportSQLiteQuery): List<MetricPresence>
     @Query("SELECT * FROM samples WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY time DESC,id DESC LIMIT 1")
     suspend fun lastInRange(session: String?, from: Long, to: Long): SampleRow?
+    @Query("SELECT * FROM samples WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) ORDER BY time DESC,id DESC LIMIT 1")
+    suspend fun lastInRangeThrough(session: String?, from: Long, to: Long, throughId: Long): SampleRow?
 
     @Insert suspend fun start(row: SessionRow)
     @Insert suspend fun sample(row: SampleRow): Long
     @Insert suspend fun enqueue(row: OutboxRow)
     @Query("SELECT * FROM sessions ORDER BY startedAt DESC LIMIT 200") fun sessions(): Flow<List<SessionRow>>
+    @Query("SELECT * FROM sessions ORDER BY startedAt DESC LIMIT 200") suspend fun sessionsSnapshot(): List<SessionRow>
     @Query("SELECT * FROM sessions WHERE id=:id") suspend fun session(id: String): SessionRow?
     @Query("UPDATE sessions SET continuous=:continuous, durationSeconds=:duration, configuration=:configuration WHERE id=:id AND status='RUNNING'")
     suspend fun updateTiming(id: String, continuous: Boolean, duration: Long, configuration: String): Int
@@ -96,6 +104,7 @@ interface MonitorDao {
     @Query("UPDATE sessions SET status='INTERRUPTED', endReason='process_interrupted', endedAt=COALESCE((SELECT MAX(time) FROM samples WHERE samples.sessionId=sessions.id), startedAt) WHERE status='RUNNING'")
     suspend fun interrupt()
     @Query("SELECT * FROM samples ORDER BY id DESC LIMIT 1") fun latest(): Flow<SampleRow?>
+    @Query("SELECT COALESCE(MAX(id),0) FROM samples") suspend fun latestId(): Long
     @Query("SELECT * FROM samples NOT INDEXED WHERE sessionId=:session ORDER BY id DESC LIMIT 1")
     fun latestInSession(session: String): Flow<SampleRow?>
     @Query("SELECT * FROM samples NOT INDEXED WHERE sessionId=:session AND (headroomTime IS NOT NULL OR capabilities LIKE '%HEADROOM=ERROR%' OR capabilities LIKE '%HEADROOM=UNSUPPORTED%' OR capabilities LIKE '%HEADROOM=DISABLED%') ORDER BY id DESC LIMIT 1")
@@ -119,6 +128,41 @@ interface MonitorDao {
     @Query("SELECT COUNT(*) FROM outbox") suspend fun outboxCount(): Long
     @Query("UPDATE outbox SET attempts=:attempts, nextAttempt=:next WHERE id=:id") suspend fun retry(id: Long, attempts: Int, next: Long)
     @RawQuery suspend fun chart(query: SupportSQLiteQuery): List<ChartBucket>
+    @RawQuery suspend fun charts(query: SupportSQLiteQuery): List<MetricChartBucket>
+}
+
+fun samplePresenceQuery(metrics: List<Metric>, session: String?, from: Long, to: Long,
+    throughId: Long): SimpleSQLiteQuery {
+    val requested=metrics.joinToString(" UNION ALL ") {
+        "SELECT '${it.name}' AS metric,'${it.capabilityKey()}' AS capability"
+    }
+    val value=metrics.joinToString(" ","CASE metric "," END") { "WHEN '${it.name}' THEN ${it.column}" }
+    val sql="""SELECT metric,
+        COALESCE(SUM(CASE WHEN $value IS NOT NULL THEN 1 ELSE 0 END),0) AS valid,
+        COALESCE(SUM(CASE WHEN capabilities LIKE '%;'||capability||'=UNSUPPORTED%' OR capabilities LIKE capability||'=UNSUPPORTED%' OR
+            capabilities LIKE '%;'||capability||'=PERMISSION_DENIED%' OR capabilities LIKE capability||'=PERMISSION_DENIED%' THEN 1 ELSE 0 END),0) AS refusals,
+        COUNT(*) AS total FROM samples CROSS JOIN ($requested) AS requested
+        WHERE time BETWEEN ? AND ? AND id<=? AND (? IS NULL OR sessionId=?) GROUP BY metric""".trimIndent()
+    return SimpleSQLiteQuery(sql,arrayOf<Any?>(from,to,throughId,session,session))
+}
+
+fun sampleChartsQuery(metrics: List<Metric>,session: String?,from: Long,to: Long,buckets: Int=240,
+    throughId: Long=Long.MAX_VALUE): SimpleSQLiteQuery {
+    val bucketCount=buckets.coerceIn(10,1000)
+    val span=(to-from).coerceAtLeast(1)
+    val metricTable=metrics.joinToString(" UNION ALL ") { "SELECT '${it.name}' AS metric" }
+    fun caseFor(value: (Metric)->String)=metrics.joinToString(" ","CASE metric "," END") { "WHEN '${it.name}' THEN ${value(it)}" }
+    val value=caseFor { it.column }
+    val clock=caseFor { if(it.isProbe) "probeTime" else if(it==Metric.HEADROOM) "headroomTime" else "time" }
+    val segment=caseFor { if(it.isProbe) "probeSegment" else "segment" }
+    val sql="""SELECT metric,MIN((($clock-?)*?)/?,?) AS bucket,
+        CASE WHEN COUNT(DISTINCT $segment)=1 AND COUNT(DISTINCT sessionId)=1 AND COUNT($value)=COUNT(*) THEN MIN($segment) ELSE -1 END AS segment,
+        CASE WHEN COUNT(DISTINCT sessionId)=1 THEN MIN(sessionId) ELSE '' END AS sessionId,
+        MIN($clock) AS time,MIN($value) AS low,MAX($value) AS high,AVG($value) AS mean,COUNT($value) AS count
+        FROM samples CROSS JOIN ($metricTable) AS requested
+        WHERE $clock BETWEEN ? AND ? AND id<=? AND (? IS NULL OR sessionId=?)
+        GROUP BY metric,bucket ORDER BY metric,time""".trimIndent()
+    return SimpleSQLiteQuery(sql,arrayOf<Any?>(from,bucketCount,span,bucketCount-1,from,to,throughId,session,session))
 }
 
 @Database(entities = [SessionRow::class, SampleRow::class, OutboxRow::class, OemObservationRow::class, OemProfileRow::class, OemInventoryRow::class, OemEventRow::class, TelemetryRecord::class, TelemetrySchedule::class, ResumeRow::class], version = 5, exportSchema = true)
@@ -169,16 +213,18 @@ abstract class MonitorDatabase : RoomDatabase() {
     }
 }
 
-fun chartQuery(metric: Metric, session: String?, from: Long, to: Long, buckets: Int = 240): SimpleSQLiteQuery {
-    val width = ((to - from).coerceAtLeast(1) / buckets.coerceIn(10, 1000)).coerceAtLeast(1)
+fun chartQuery(metric: Metric, session: String?, from: Long, to: Long, buckets: Int = 240,
+    throughId: Long = Long.MAX_VALUE): SimpleSQLiteQuery {
+    val bucketCount = buckets.coerceIn(10, 1000)
+    val span = (to - from).coerceAtLeast(1)
     val col = metric.column // enum only; never user-supplied SQL.
     val clock = if (metric.isProbe) "probeTime" else if(metric==Metric.HEADROOM) "headroomTime" else "time"
     val segment = if (metric.isProbe) "probeSegment" else "segment"
-    return SimpleSQLiteQuery("""SELECT (($clock-?)/?) AS bucket,
+    return SimpleSQLiteQuery("""SELECT MIN((($clock-?)*?)/?,?) AS bucket,
         CASE WHEN COUNT(DISTINCT $segment)=1 AND COUNT(DISTINCT sessionId)=1 AND COUNT($col)=COUNT(*) THEN MIN($segment) ELSE -1 END AS segment,
         CASE WHEN COUNT(DISTINCT sessionId)=1 THEN MIN(sessionId) ELSE '' END AS sessionId,
         MIN($clock) AS time, MIN($col) AS low, MAX($col) AS high, AVG($col) AS mean, COUNT($col) AS count
-        FROM samples WHERE $clock BETWEEN ? AND ? AND (? IS NULL OR sessionId=?)
+        FROM samples WHERE $clock BETWEEN ? AND ? AND id<=? AND (? IS NULL OR sessionId=?)
         GROUP BY bucket ORDER BY time""".trimIndent(),
-        arrayOf<Any?>(from, width, from, to, session, session))
+        arrayOf<Any?>(from, bucketCount, span, bucketCount-1, from, to, throughId, session, session))
 }

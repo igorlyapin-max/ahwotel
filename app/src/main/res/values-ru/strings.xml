@@ -140,6 +140,9 @@
     <string name="chart_load_failed">Не удалось обновить график. Последние загруженные данные остаются видимыми.</string>
     <string name="load_failed">Не удалось загрузить выбранные данные.</string>
     <string name="refreshing_data">Обновление данных…</string>
+    <string name="history_refresh">Обновить историю</string>
+    <string name="history_last_refreshed">Снимок данных: %1$s</string>
+    <string name="history_refresh_failed">Не удалось обновить историю. На экране оставлены предыдущие данные.</string>
     <string name="retry">Повторить</string>
     <string name="help_observation_title">Текущее наблюдение</string>
     <string name="help_observed_at">Время измерения: %1$s</string>

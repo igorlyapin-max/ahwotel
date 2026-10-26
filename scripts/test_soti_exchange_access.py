@@ -52,6 +52,7 @@ def device(device_id="d-1", *, group="/Corporate/Tablets", mode="DeviceOwner", s
 
 class Logger:
     run_id = "run-1"
+    audit_ready = True
 
     def __init__(self):
         self.events = []
@@ -86,6 +87,7 @@ class SotiExchangeAccessTest(unittest.TestCase):
     def test_windows_powershell_51_source_uses_framework_compatible_contract(self):
         scripts_dir = Path(__file__).parent
         main = (scripts_dir / "soti_exchange_access_5_1.ps1").read_text(encoding="ascii")
+        main7 = (scripts_dir / "soti_exchange_access.ps1").read_text(encoding="utf-8")
         tests = (scripts_dir / "test_soti_exchange_access_5_1.ps1").read_text(encoding="ascii")
         self.assertTrue(main.startswith("#requires -Version 5.1"))
         self.assertTrue(tests.startswith("#requires -Version 5.1"))
@@ -107,6 +109,12 @@ class SotiExchangeAccessTest(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, main)
+        for source in (main7, main):
+            for required in (
+                "audit_log_required_for_apply", "audit_log_write_failed_after_action_manual_review_required",
+                "exchange_action_started", "exchange_reference_invalid", "Write-AuditLine",
+            ):
+                self.assertIn(required, source)
 
     def test_cross_runtime_parity_fixture(self):
         fixture_path = Path(__file__).parent / "fixtures" / "soti_exchange_access" / "parity.json"
@@ -151,11 +159,22 @@ class SotiExchangeAccessTest(unittest.TestCase):
         self.assertEqual([], normalized["exchangeReferenceIds"])
         self.assertEqual(access.policy_fingerprint(cfg), access.policy_fingerprint(normalized))
 
+    def test_invalid_exchange_reference_is_manual_and_never_a_candidate(self):
+        cfg = config(exchangeReferenceIds=[])
+        for invalid in (None, "", "   ", 42, ["exchange-main"], {"id": "exchange-main"}):
+            with self.subTest(reference=invalid):
+                value = device()
+                value["ExchangeOnlineEmailAccess"][0]["ReferenceId"] = invalid
+                decision = access.evaluate_device(value, cfg)
+                self.assertEqual("manual", decision["decision"])
+                self.assertEqual("exchange_reference_invalid", decision["reason"])
+
     def test_example_config_defaults_to_optional_reference_and_otlp(self):
         example = json.loads((Path(__file__).parents[1] / "docs/soti-exchange-access.example.json").read_text())
         cfg = access.validate_config(example)
         self.assertEqual([], cfg["exchangeReferenceIds"])
         self.assertIsNone(cfg.get("otlpLogsEndpoint"))
+        self.assertIsNone(cfg.get("auditLogPath"))
 
     def test_group_prefix_requires_path_boundary(self):
         self.assertFalse(access.group_matches("/Corporate-External", ["/Corporate"]))
@@ -235,26 +254,72 @@ class SotiExchangeAccessTest(unittest.TestCase):
         self.assertRegex(value["deviceId"], r"^sha256:[0-9a-f]{12}$")
         self.assertEqual(1, value["count"])
 
-    def test_apply_allows_stdout_only_audit(self):
+    def test_apply_requires_and_writes_durable_local_audit(self):
         cfg = config(otlpLogsEndpoint=None)
-        logger = access.EventLogger(cfg, "run-1")
-        client = FakeClient([device()])
-        with patch("sys.stdout", new_callable=io.StringIO) as output:
-            result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
-        self.assertEqual("allowed", result["results"][0]["outcome"])
-        self.assertEqual([("d-1", "exchange-main")], client.actions)
-        self.assertIn('"auditSink":"stdout"', output.getvalue())
+        with self.assertRaisesRegex(access.ContractError, "audit_log_required"):
+            access.EventLogger(cfg, "run-1", require_audit=True)
+        with tempfile.TemporaryDirectory() as directory:
+            audit = Path(directory) / "audit.jsonl"
+            cfg = config(otlpLogsEndpoint=None, auditLogPath=str(audit))
+            logger = access.EventLogger(cfg, "run-1", require_audit=True)
+            client = FakeClient([device()])
+            with patch("sys.stdout", new_callable=io.StringIO) as output:
+                result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
+            self.assertEqual("allowed", result["results"][0]["outcome"])
+            self.assertEqual([("d-1", "exchange-main")], client.actions)
+            self.assertIn('"auditSink":"stdout+file"', output.getvalue())
+            content = audit.read_text(encoding="utf-8")
+            self.assertLess(content.index('"event":"exchange_action_started"'), content.index('"event":"exchange_access_result"'))
+            self.assertNotIn("d-1", content)
+            self.assertNotIn("exchange-main", content)
+        with tempfile.TemporaryDirectory() as directory:
+            audit = Path(directory) / "broad.jsonl"
+            audit.write_text("", encoding="utf-8")
+            audit.chmod(0o644)
+            with self.assertRaisesRegex(access.ContractError, "audit_log_permissions_must_be_0600"):
+                access.EventLogger(config(auditLogPath=str(audit)), "run-1", require_audit=True)
 
     def test_configured_otlp_failure_warns_and_apply_continues(self):
-        cfg = config()
-        logger = access.EventLogger(cfg, "run-1")
-        client = FakeClient([device()])
-        with patch.object(logger, "_send_otlp", side_effect=OSError("collector unavailable")), \
-                patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO) as errors:
-            result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
-        self.assertEqual("allowed", result["results"][0]["outcome"])
-        self.assertEqual([("d-1", "exchange-main")], client.actions)
-        self.assertIn("audit_sink_unavailable", errors.getvalue())
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = config(auditLogPath=str(Path(directory) / "audit.jsonl"))
+            logger = access.EventLogger(cfg, "run-1", require_audit=True)
+            client = FakeClient([device()])
+            with patch.object(logger, "_send_otlp", side_effect=OSError("collector unavailable")), \
+                    patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO) as errors:
+                result = access.apply_approvals(client, cfg, logger, [{"deviceId": "d-1", "referenceId": "exchange-main"}])
+            self.assertEqual("allowed", result["results"][0]["outcome"])
+            self.assertEqual([("d-1", "exchange-main")], client.actions)
+            self.assertIn("audit_sink_unavailable", errors.getvalue())
+
+    def test_local_audit_failure_is_fail_closed_and_reports_post_action_ambiguity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = config(otlpLogsEndpoint=None, auditLogPath=str(Path(directory) / "audit.jsonl"))
+            approval = [{"deviceId": "d-1", "referenceId": "exchange-main"}]
+            before_logger = access.EventLogger(cfg, "run-before", require_audit=True)
+            before_client = FakeClient([device()])
+            writes = 0
+            def fail_before(_line):
+                nonlocal writes
+                writes += 1
+                if writes == 2:
+                    raise access.ApiError("audit_log_write_failed")
+            with patch.object(before_logger, "_append_audit", side_effect=fail_before):
+                with self.assertRaisesRegex(access.ApiError, "audit_log_write_failed"):
+                    access.apply_approvals(before_client, cfg, before_logger, approval)
+            self.assertEqual([], before_client.actions)
+
+            after_logger = access.EventLogger(cfg, "run-after", require_audit=True)
+            after_client = FakeClient([device()])
+            writes = 0
+            def fail_after(_line):
+                nonlocal writes
+                writes += 1
+                if writes == 3:
+                    raise access.ApiError("audit_log_write_failed")
+            with patch.object(after_logger, "_append_audit", side_effect=fail_after):
+                with self.assertRaisesRegex(access.ApiError, "after_action_manual_review"):
+                    access.apply_approvals(after_client, cfg, after_logger, approval)
+            self.assertEqual([("d-1", "exchange-main")], after_client.actions)
 
     def test_empty_otlp_endpoint_is_rejected(self):
         with self.assertRaisesRegex(access.ContractError, "invalid_otlpLogsEndpoint"):

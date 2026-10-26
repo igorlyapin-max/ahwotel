@@ -189,6 +189,9 @@ def validate_config(raw: Any) -> dict[str, Any]:
             raise ContractError("invalid_otlpLogsEndpoint")
         if parsed.query or parsed.fragment or not parsed.path.endswith("/v1/logs"):
             raise ContractError("otlpLogsEndpoint_must_end_with_v1_logs")
+    audit_path = config.get("auditLogPath")
+    if audit_path is not None and (not isinstance(audit_path, str) or not audit_path.strip()):
+        raise ContractError("invalid_config:auditLogPath")
     return config
 
 
@@ -271,15 +274,21 @@ def evaluate_device(device: dict[str, Any], config: dict[str, Any]) -> dict[str,
         raise ContractError("exchange_access_must_be_array")
     reference_allowlist = config["exchangeReferenceIds"]
     matching = []
+    invalid_references = 0
     for record in records:
         if not isinstance(record, dict):
             raise ContractError("exchange_access_contains_non_object")
-        reference_id = str(dotted(record, fields["exchangeReferenceId"]))
+        reference_id = dotted(record, fields["exchangeReferenceId"])
+        if not isinstance(reference_id, str) or not reference_id.strip():
+            invalid_references += 1
+            continue
         if not reference_allowlist or reference_id in reference_allowlist:
             matching.append(record)
+    if invalid_references:
+        return {**base, "decision": "manual", "reason": "exchange_reference_invalid", "recordCount": len(records)}
     if len(matching) != 1:
         return {**base, "decision": "manual", "reason": "exchange_record_count", "recordCount": len(matching)}
-    reference_id = str(dotted(matching[0], fields["exchangeReferenceId"]))
+    reference_id = dotted(matching[0], fields["exchangeReferenceId"])
     exchange_status = str(dotted(matching[0], fields["exchangeStatus"]))
     result = {**base, "referenceId": reference_id, "exchangeStatus": exchange_status}
     if exchange_status in config["allowedExchangeStatuses"]:
@@ -295,7 +304,7 @@ def redact(value: Any) -> Any:
         for key, item in value.items():
             if SENSITIVE_KEYS.search(key):
                 result[key] = "***"
-            elif key.lower() == "deviceid":
+            elif key.lower() in {"deviceid", "referenceid"}:
                 result[key] = "sha256:" + hashlib.sha256(str(item).encode()).hexdigest()[:12]
             else:
                 result[key] = redact(item)
@@ -321,15 +330,67 @@ def validate_otlp_response(raw: bytes) -> None:
 
 
 class EventLogger:
-    def __init__(self, config: dict[str, Any], run_id: str):
+    def __init__(self, config: dict[str, Any], run_id: str, *, require_audit: bool = False):
         self.level = config["diagnostic"]
         self.endpoint = config.get("otlpLogsEndpoint")
+        self.audit_path = Path(config["auditLogPath"]) if config.get("auditLogPath") else None
         self.timeout = config["requestTimeoutSeconds"]
         self.run_id = run_id
+        if require_audit and self.audit_path is None:
+            raise ContractError("audit_log_required_for_apply")
+        if self.audit_path is not None:
+            self._prepare_audit_file()
+
+    @property
+    def audit_ready(self) -> bool:
+        return self.audit_path is not None
+
+    def _prepare_audit_file(self) -> None:
+        assert self.audit_path is not None
+        try:
+            if self.audit_path.is_symlink():
+                raise ContractError("audit_log_symlink_forbidden")
+            if not self.audit_path.parent.is_dir():
+                raise ContractError("audit_log_parent_missing")
+            existed = self.audit_path.exists()
+            flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(self.audit_path, flags, 0o600)
+            try:
+                if not existed:
+                    os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
+                mode = stat.S_IMODE(os.fstat(descriptor).st_mode)
+                if mode & (stat.S_IRWXG | stat.S_IRWXO):
+                    raise ContractError("audit_log_permissions_must_be_0600")
+            finally:
+                os.close(descriptor)
+        except ContractError:
+            raise
+        except OSError as error:
+            raise ContractError("audit_log_unavailable") from error
+
+    def _append_audit(self, line: str) -> None:
+        assert self.audit_path is not None
+        try:
+            flags = os.O_APPEND | os.O_WRONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(self.audit_path, flags)
+            try:
+                os.write(descriptor, (line + "\n").encode("utf-8"))
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        except OSError as error:
+            raise ApiError("audit_log_write_failed") from error
 
     def emit(self, event: str, *, severity: str = "INFO", **metadata: Any) -> None:
         record = {"timestamp": iso(utc_now()), "severity": severity, "event": event, "runId": self.run_id, "metadata": redact(metadata)}
-        print(json.dumps(record, sort_keys=True, separators=(",", ":")), file=sys.stderr if severity in {"ERROR", "WARN"} else sys.stdout, flush=True)
+        line = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        print(line, file=sys.stderr if severity in {"ERROR", "WARN"} else sys.stdout, flush=True)
+        if self.audit_path is not None:
+            self._append_audit(line)
         if self.endpoint:
             try:
                 self._send_otlp(record)
@@ -511,10 +572,12 @@ def wait_for_allowed(client: Any, config: dict[str, Any], device_id: str, refere
 def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, approvals: list[dict[str, str]]) -> dict[str, Any]:
     if not config["actionContractVerified"]:
         raise ContractError("action_contract_not_verified")
+    if not getattr(logger, "audit_ready", False):
+        raise ContractError("audit_log_required_for_apply")
     logger.emit(
         "apply_audit_preflight",
         approvals=len(approvals),
-        auditSink="stdout+otlp" if getattr(logger, "endpoint", None) else "stdout",
+        auditSink="stdout+file+otlp" if getattr(logger, "endpoint", None) else "stdout+file",
     )
     results = []
     for approved in approvals:
@@ -527,6 +590,7 @@ def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, ap
         elif current["decision"] == "candidate":
             if current.get("referenceId") != reference_id:
                 raise ContractError("approved_reference_id_changed")
+            logger.emit("exchange_action_started", deviceId=device_id, referenceId=reference_id)
             try:
                 client.allow_exchange(device_id, reference_id)
             except ApiError:
@@ -540,7 +604,12 @@ def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, ap
             raise ContractError(f"device_no_longer_eligible:{current['reason']}")
         result = {"deviceId": device_id, "referenceId": reference_id, "outcome": outcome}
         results.append(result)
-        logger.emit("exchange_access_result", **result)
+        try:
+            logger.emit("exchange_access_result", **result)
+        except ApiError as error:
+            if str(error) == "audit_log_write_failed":
+                raise ApiError("audit_log_write_failed_after_action_manual_review_required") from error
+            raise
     return {"schemaVersion": SCHEMA_VERSION, "kind": "soti-exchange-apply-result", "runId": logger.run_id, "completedAt": iso(utc_now()), "results": results}
 
 
@@ -579,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
     run_id = str(uuid.uuid4())
     try:
         config = validate_config(read_json(args.config))
-        logger = EventLogger(config, run_id)
+        logger = EventLogger(config, run_id, require_audit=args.command == "apply")
         approvals = None
         if args.command in {"apply", "verify"}:
             report, approval = read_json(args.report), read_json(args.approvals)

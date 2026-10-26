@@ -1,6 +1,7 @@
 package com.ahwotel
 
 import androidx.room.*
+import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "telemetry_records", indices = [Index("time"), Index(value = ["metric", "time"]), Index("sessionId")])
@@ -13,13 +14,22 @@ data class TelemetryRecord(@PrimaryKey(autoGenerate = true) val id: Long = 0, va
 @Entity(tableName = "telemetry_schedule")
 data class TelemetrySchedule(@PrimaryKey val name: String, val last: Long)
 data class MetricPresence(val metric: String, val valid: Int, val refusals: Int, val total: Int)
+data class AgentChartAggregate(val component: String,val bucket: Long,val segment: Int,val sessionId: String,
+    val time: Long,val low: Double?,val high: Double?,val weightedTotal: Double,val sumTotal: Double,
+    val maximum: Double?,val stateLow: Double?,val stateHigh: Double?,val sampleCount: Long,val invalid: Int)
 @Dao interface AgentTelemetryDao {
     @Query("SELECT metric, SUM(CASE WHEN status='AVAILABLE' AND (value IS NOT NULL OR text IS NOT NULL) THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN status IN ('UNSUPPORTED','PERMISSION_DENIED') THEN 1 ELSE 0 END) AS refusals, COUNT(*) AS total FROM telemetry_records WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY metric")
     suspend fun presence(from: Long,to: Long,session: String?): List<MetricPresence>
+    @Query("SELECT metric, SUM(CASE WHEN status='AVAILABLE' AND (value IS NOT NULL OR text IS NOT NULL) THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN status IN ('UNSUPPORTED','PERMISSION_DENIED') THEN 1 ELSE 0 END) AS refusals, COUNT(*) AS total FROM telemetry_records WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) GROUP BY metric")
+    suspend fun presenceThrough(from: Long,to: Long,session: String?,throughId: Long): List<MetricPresence>
     @Query("SELECT * FROM telemetry_records WHERE id IN (SELECT MAX(id) FROM telemetry_records WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY stream,metric,component)")
     suspend fun rangeLatest(from: Long,to: Long,session: String?): List<TelemetryRecord>
+    @Query("SELECT * FROM telemetry_records WHERE id IN (SELECT MAX(id) FROM telemetry_records WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) GROUP BY stream,metric,component)")
+    suspend fun rangeLatestThrough(from: Long,to: Long,session: String?,throughId: Long): List<TelemetryRecord>
     @Query("SELECT * FROM telemetry_records WHERE metric IN ('LEVEL','TEMP','PLUG','STATUS') AND stream='battery' AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY time,id")
     suspend fun batterySummaryRows(from: Long,to: Long,session: String?): List<TelemetryRecord>
+    @Query("SELECT * FROM telemetry_records WHERE metric IN ('LEVEL','TEMP','PLUG','STATUS') AND stream='battery' AND time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) ORDER BY time,id")
+    suspend fun batterySummaryRowsThrough(from: Long,to: Long,session: String?,throughId: Long): List<TelemetryRecord>
 
     @Insert suspend fun insert(rows: List<TelemetryRecord>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun schedule(row: TelemetrySchedule)
@@ -30,6 +40,7 @@ data class MetricPresence(val metric: String, val valid: Int, val refusals: Int,
     fun latestInSession(session: String): Flow<List<TelemetryRecord>>
 
     @Query("SELECT COALESCE(MAX(id),0) FROM telemetry_records") suspend fun latestId(): Long
+    @RawQuery suspend fun chart(query: SupportSQLiteQuery): List<AgentChartAggregate>
     @Query("SELECT * FROM telemetry_records WHERE metric=:metric AND time BETWEEN :from AND :to AND time>=:afterTime AND (time>:afterTime OR id>:afterId) AND id<=:throughId AND (:session IS NULL OR sessionId=:session) ORDER BY time,id LIMIT 300")
     suspend fun chartPage(metric: String, from: Long, to: Long, afterTime: Long, afterId: Long, throughId: Long, session: String? = null): List<TelemetryRecord>
     @Query("SELECT * FROM telemetry_records WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 300")

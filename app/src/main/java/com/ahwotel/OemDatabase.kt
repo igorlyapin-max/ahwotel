@@ -36,17 +36,28 @@ data class OemEventRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val se
 
     @Query("SELECT metric, SUM(CASE WHEN status='AVAILABLE' AND (number IS NOT NULL OR text IS NOT NULL) THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN status IN ('UNSUPPORTED','PERMISSION_DENIED') THEN 1 ELSE 0 END) AS refusals, COUNT(*) AS total FROM oem_observations WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY metric")
     suspend fun presence(from: Long,to: Long,session: String?): List<MetricPresence>
+    @Query("SELECT metric, SUM(CASE WHEN status='AVAILABLE' AND (number IS NOT NULL OR text IS NOT NULL) THEN 1 ELSE 0 END) AS valid, SUM(CASE WHEN status IN ('UNSUPPORTED','PERMISSION_DENIED') THEN 1 ELSE 0 END) AS refusals, COUNT(*) AS total FROM oem_observations WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) GROUP BY metric")
+    suspend fun presenceThrough(from: Long,to: Long,session: String?,throughId: Long): List<MetricPresence>
     @Query("SELECT * FROM oem_observations WHERE id IN (SELECT MAX(id) FROM oem_observations WHERE time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) GROUP BY metric,provider)")
     suspend fun rangeLatest(from: Long,to: Long,session: String?): List<OemObservationRow>
+    @Query("SELECT * FROM oem_observations WHERE id IN (SELECT MAX(id) FROM oem_observations WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) GROUP BY metric,provider)")
+    suspend fun rangeLatestThrough(from: Long,to: Long,session: String?,throughId: Long): List<OemObservationRow>
 
     @Insert suspend fun observations(rows: List<OemObservationRow>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun profile(row: OemProfileRow)
     @Insert suspend fun inventory(row: OemInventoryRow)
     @Insert suspend fun events(rows: List<OemEventRow>)
     @Query("SELECT * FROM oem_observations WHERE id IN (SELECT MAX(id) FROM oem_observations GROUP BY metric,provider)") suspend fun latest(): List<OemObservationRow>
+    @Query("SELECT COALESCE(MAX(id),0) FROM oem_observations") suspend fun latestId(): Long
+    @Query("SELECT COALESCE(MAX(id),0) FROM oem_inventory") suspend fun latestInventoryId(): Long
+    @Query("SELECT COALESCE(MAX(id),0) FROM oem_events") suspend fun latestEventId(): Long
     @Query("SELECT * FROM oem_inventory WHERE provider=:provider ORDER BY id DESC LIMIT 1") suspend fun latestInventory(provider: String): OemInventoryRow?
     @Query("SELECT * FROM oem_inventory WHERE id IN (SELECT MAX(id) FROM oem_inventory GROUP BY provider)") fun inventories(): Flow<List<OemInventoryRow>>
     @Query("SELECT * FROM oem_events ORDER BY id DESC LIMIT 200") fun recentEvents(): Flow<List<OemEventRow>>
+    @Query("SELECT * FROM oem_inventory WHERE id IN (SELECT MAX(id) FROM oem_inventory WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) GROUP BY provider)")
+    suspend fun inventoriesThrough(from: Long,to: Long,session: String?,throughId: Long): List<OemInventoryRow>
+    @Query("SELECT * FROM oem_events WHERE time BETWEEN :from AND :to AND id<=:throughId AND (:session IS NULL OR sessionId=:session) ORDER BY id DESC LIMIT 200")
+    suspend fun recentEventsThrough(from: Long,to: Long,session: String?,throughId: Long): List<OemEventRow>
     @Query("SELECT * FROM oem_profiles") suspend fun profiles(): List<OemProfileRow>
     @Query("SELECT * FROM oem_observations WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 500")
     suspend fun page(after: Long, from: Long, to: Long, session: String?): List<OemObservationRow>
@@ -63,14 +74,15 @@ data class OemEventRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val se
     @RawQuery suspend fun chart(query: SupportSQLiteQuery): List<ChartBucket>
 }
 
-fun oemChartQuery(metric: OemMetric, provider: String, session: String?, from: Long, to: Long): SimpleSQLiteQuery {
-    val width = ((to - from).coerceAtLeast(1) / 240).coerceAtLeast(1)
-    return SimpleSQLiteQuery("""SELECT ((time-?)/?) AS bucket,
+fun oemChartQuery(metric: OemMetric, provider: String, session: String?, from: Long, to: Long,
+    throughId: Long = Long.MAX_VALUE): SimpleSQLiteQuery {
+    val span = (to - from).coerceAtLeast(1)
+    return SimpleSQLiteQuery("""SELECT MIN(((time-?)*240)/?,239) AS bucket,
         CASE WHEN COUNT(DISTINCT segment)=1 AND COUNT(DISTINCT sessionId)=1 AND COUNT(number)=COUNT(*) THEN MIN(segment) ELSE -1 END AS segment,
         CASE WHEN COUNT(DISTINCT sessionId)=1 THEN MIN(sessionId) ELSE '' END AS sessionId,
         MIN(time) AS time, MIN(number) AS low, MAX(number) AS high, AVG(number) AS mean, COUNT(number) AS count
-        FROM oem_observations WHERE metric=? AND provider=? AND time BETWEEN ? AND ? AND (? IS NULL OR sessionId=?)
-        GROUP BY bucket ORDER BY time""".trimIndent(), arrayOf(from, width, metric.name, provider, from, to, session, session))
+        FROM oem_observations WHERE metric=? AND provider=? AND time BETWEEN ? AND ? AND id<=? AND (? IS NULL OR sessionId=?)
+        GROUP BY bucket ORDER BY time""".trimIndent(), arrayOf(from, span, metric.name, provider, from, to, throughId, session, session))
 }
 
 object InventoryCodec {

@@ -9,6 +9,7 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.ahwotel.oem.*
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = android.app.Application::class)
@@ -37,6 +38,27 @@ class PersistenceTest {
         assertTrue(result.size <= 241)
         assertEquals(99.0, result.maxOf { it.high ?: 0.0 }, 0.0)
         assertEquals(2500, result.sumOf { it.count })
+    }
+    @Test fun allChartSourcesUseProportionalBucketsForIndivisibleRanges() = runBlocking {
+        db.dao().sample(row(500,10.0))
+        assertEquals(120L,db.dao().chart(chartQuery(Metric.CPU,"s",0,1000,240)).single().bucket)
+        val batched=db.dao().charts(sampleChartsQuery(listOf(Metric.CPU,Metric.MEMORY_PERCENT),"s",0,1000,240))
+        assertEquals(120L,batched.single { it.metric==Metric.CPU.name }.bucket)
+        db.agentDao().insert(listOf(TelemetryRecord(sessionId="s",stream="battery",metric="LEVEL",
+            time=500,start=500,durationMs=0,segment=0,value=50.0,source="test",metadata="{}")))
+        assertEquals(120L,loadAgentChart(db.agentDao(),AgentMetric.LEVEL,0,1000,"s").single().points.single().bucket)
+        db.oemDao().observations(listOf(OemObservationRow.from(OemObservation(OemMetric.ANDROID_SDK,"android_standard",
+            OemSource.ANDROID_STANDARD,OemScope.DEVICE,number=30.0,time=500),"s",0)))
+        assertEquals(120L,db.oemDao().chart(oemChartQuery(OemMetric.ANDROID_SDK,"android_standard","s",0,1000)).single().bucket)
+    }
+    @Test fun historyAvailabilityIsAggregatedInOneMetricMatrix() = runBlocking {
+        db.dao().sample(row(100,null).copy(capabilities="CPU=UNSUPPORTED;MEMORY=AVAILABLE",memoryPercent=40.0))
+        val presence=db.dao().presence(samplePresenceQuery(listOf(Metric.CPU,Metric.MEMORY_PERCENT),"s",0,1000,Long.MAX_VALUE))
+            .associateBy { it.metric }
+        assertEquals(0,presence.getValue(Metric.CPU.name).valid)
+        assertEquals(1,presence.getValue(Metric.CPU.name).refusals)
+        assertEquals(1,presence.getValue(Metric.MEMORY_PERCENT.name).valid)
+        assertEquals(0,presence.getValue(Metric.MEMORY_PERCENT.name).refusals)
     }
     @Test fun restartMarksRunningSessionsInterruptedAtLastRealSample() = runBlocking {
         db.dao().start(SessionRow("s", "device", 100, reason = "", configuration = "{}", continuous = true, durationSeconds = 300))
@@ -72,6 +94,37 @@ class PersistenceTest {
         assertEquals(1000L, bucket.time); assertEquals(-1, bucket.segment)
         assertEquals(2.0, bucket.low!!, 0.0); assertEquals(30.0, bucket.high!!, 0.0)
         assertEquals(16.0, bucket.mean!!, 0.0)
+    }
+    @Test fun historySnapshotExcludesRowsWrittenAfterCapturedRevisions() = runBlocking {
+        db.dao().sample(row(1000,10.0))
+        db.agentDao().insert(listOf(TelemetryRecord(sessionId="s",stream="battery",metric="LEVEL",
+            time=1000,start=1000,durationMs=0,segment=0,value=50.0,source="test",metadata="{}")))
+        db.oemDao().observations(listOf(OemObservationRow.from(OemObservation(OemMetric.ANDROID_SDK,"android_standard",
+            OemSource.ANDROID_STANDARD,OemScope.DEVICE,number=30.0,time=1000),"s",0)))
+        db.oemDao().inventory(OemInventoryRow(sessionId="s",time=1000,provider="android_standard",complete=true,payload="[]"))
+        db.oemDao().events(listOf(OemEventRow(sessionId="s",time=1000,provider="android_standard",subject="sdk",kind="STATE_CHANGED",before="29",after="30")))
+        val sampleThrough=db.dao().latestId()
+        val agentThrough=db.agentDao().latestId()
+        val oemThrough=db.oemDao().latestId()
+        val inventoryThrough=db.oemDao().latestInventoryId()
+        val eventThrough=db.oemDao().latestEventId()
+
+        db.dao().sample(row(2000,90.0))
+        db.agentDao().insert(listOf(TelemetryRecord(sessionId="s",stream="battery",metric="LEVEL",
+            time=2000,start=2000,durationMs=0,segment=0,value=90.0,source="test",metadata="{}")))
+        db.oemDao().observations(listOf(OemObservationRow.from(OemObservation(OemMetric.ANDROID_SDK,"android_standard",
+            OemSource.ANDROID_STANDARD,OemScope.DEVICE,number=36.0,time=2000),"s",0)))
+        db.oemDao().inventory(OemInventoryRow(sessionId="s",time=2000,provider="android_standard",complete=true,payload="[]"))
+        db.oemDao().events(listOf(OemEventRow(sessionId="s",time=2000,provider="android_standard",subject="sdk",kind="STATE_CHANGED",before="30",after="36")))
+
+        val core=db.dao().chart(chartQuery(Metric.CPU,"s",0,3000,10,sampleThrough))
+        assertEquals(1,core.sumOf { it.count });assertEquals(10.0,core.single().mean!!,0.0)
+        val agent=loadAgentChart(db.agentDao(),AgentMetric.LEVEL,0,3000,"s",agentThrough)
+        assertEquals(50.0,agent.single().points.single().mean!!,0.0)
+        val oem=db.oemDao().chart(oemChartQuery(OemMetric.ANDROID_SDK,"android_standard","s",0,3000,oemThrough))
+        assertEquals(30.0,oem.single().mean!!,0.0)
+        assertEquals(1000L,db.oemDao().inventoriesThrough(0,3000,"s",inventoryThrough).single().time)
+        assertEquals(1000L,db.oemDao().recentEventsThrough(0,3000,"s",eventThrough).single().time)
     }
     private fun row(time: Long, cpu: Double?) = SampleRow(sessionId = "s", time = time, elapsed = time, segment = 0, cpu = cpu, screenOn = true)
 }

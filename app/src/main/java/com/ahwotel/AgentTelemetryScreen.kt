@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.room.withTransaction
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.OutputStream
@@ -93,38 +94,55 @@ private fun agentTechnicalLine(record: TelemetryRecord): String =
     })
 }
 private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val end: Long,val session: String?,val revision: Long)
+private data class AgentRangeRequest(val end: Long,val range: Long,val session: String?,val revision: Long,val metric: AgentMetric)
+private data class AgentRangeData(val presence: List<MetricPresence>,val latest: List<TelemetryRecord>,
+    val chart: List<AgentChartSeries>)
 
-@Composable fun AgentTelemetryScreen(app: MonitorApp, battery: Boolean, history: Boolean = false, session: String? = null,
-    historyEnd: Long? = null, historyWindow: HistoryWindowState? = null, groupFilter: String? = null, back: ()->Unit) {
+@Composable internal fun AgentTelemetryScreen(app: MonitorApp, battery: Boolean, history: Boolean = false, session: String? = null,
+    historyEnd: Long? = null, historyWindow: HistoryWindowState? = null,
+    historyRefresh: HistoryRefreshController? = null, groupFilter: String? = null, back: ()->Unit) {
     androidx.activity.compose.BackHandler { back() }
-    val probeRows by app.agentTelemetry.probes.collectAsStateWithLifecycle()
+    val probeRows=if(history) emptyList() else app.agentTelemetry.probes.collectAsStateWithLifecycle().value
     val settings by app.settings.collectAsStateWithLifecycle()
     val active by app.state.collectAsStateWithLifecycle()
-    val sessions by remember { app.db.dao().sessions() }.collectAsStateWithLifecycle(initialValue=emptyList())
+    val localRefresh=rememberHistoryRefreshController(app,enabled=history && historyRefresh==null)
+    val refresh=historyRefresh ?: localRefresh
+    val revision=refresh.revision
+    val liveSessions=if(history) emptyList() else remember { app.db.dao().sessions() }.collectAsStateWithLifecycle(initialValue=emptyList()).value
+    val sessions=if(history) revision?.sessions.orEmpty() else liveSessions
     val liveSession=active.sessionId ?: sessions.firstOrNull()?.id ?: ""
-    val liveLatest by remember(liveSession) { app.db.agentDao().latestInSession(liveSession) }.collectAsStateWithLifecycle(initialValue=emptyList())
+    val liveLatest=if(history) emptyList() else remember(liveSession) { app.db.agentDao().latestInSession(liveSession) }
+        .collectAsStateWithLifecycle(initialValue=emptyList()).value
     val all=AgentMetric.entries.filter { it.battery==battery && (groupFilter==null || it.group==groupFilter) }
     var metric by remember { mutableStateOf(all.first()) }
     var expanded by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf<AgentMetric?>(null) }
     val localWindow=remember(historyEnd) { HistoryWindowState(initialEnd=historyEnd ?: System.currentTimeMillis(),initialAtLatest=historyEnd==null) }
     val window=historyWindow ?: localWindow
+    LaunchedEffect(history,revision?.capturedAt,window.atLatest) {
+        if(history && window.atLatest && revision!=null) window.end=revision.capturedAt
+    }
     val range=window.range
-    val now=if(history) window.end else maxOf(liveLatest.filter { it.sessionId==liveSession }.maxOfOrNull { it.time } ?: 0,remember(liveSession) { System.currentTimeMillis() })
+    val now=if(history) (if(window.atLatest) revision?.capturedAt ?: window.end else window.end)
+        else maxOf(liveLatest.filter { it.sessionId==liveSession }.maxOfOrNull { it.time } ?: 0,remember(liveSession) { System.currentTimeMillis() })
     val querySession=if(history) session else liveSession
-    val request=Triple(now,range,querySession)
+    val request=AgentRangeRequest(now,range,querySession,revision?.agentThroughId ?: 0,metric)
     var rangeRetry by remember(history,querySession) { mutableIntStateOf(0) }
-    val rangeLoad=if(history) rememberRetainedLoad(history to querySession,request,retryKey=rangeRetry,load={ target ->
-            app.db.agentDao().presence(target.first-target.second,target.first,target.third) to
-                app.db.agentDao().rangeLatest(target.first-target.second,target.first,target.third)
-        },onError={app.logs.event("history_range_load_failed",error=true)})
-        else RetainedLoadState<Triple<Long,Long,String?>,Pair<List<MetricPresence>,List<TelemetryRecord>>>()
-    val currentRange=rangeLoad.snapshot?.takeIf { it.request==request }?.value
-    val loaded=rangeLoad.snapshot?.value
-    val latest=(if(history) loaded?.second.orEmpty() else liveLatest.filter { it.sessionId==liveSession })
+    val rangeLoad=if(history) rememberRetainedLoad("agent_history",request,retryKey=rangeRetry,load={ target -> app.db.withTransaction {
+            AgentRangeData(
+                app.db.agentDao().presenceThrough(target.end-target.range,target.end,target.session,target.revision),
+                app.db.agentDao().rangeLatestThrough(target.end-target.range,target.end,target.session,target.revision),
+                loadAgentChart(app.db.agentDao(),target.metric,target.end-target.range,target.end,target.session,target.revision))
+        } },onError={app.logs.event("history_range_load_failed",error=true)})
+        else RetainedLoadState<AgentRangeRequest,AgentRangeData>()
+    val rangeSnapshot=rangeLoad.snapshot
+    val currentRange=rangeSnapshot?.value
+    val loaded=rangeSnapshot?.value
+    val displayedRequest=rangeSnapshot?.request ?: request
+    val latest=(if(history) loaded?.latest.orEmpty() else liveLatest.filter { it.sessionId==liveSession })
         .filter { AgentMetric.valueOf(it.metric).acceptsStream(it.stream) }
     val folded=all.filter { m ->
-        if(history) currentRange?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
+        if(history) currentRange?.presence?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
         else {
             val recorded=latest.filter { it.metric==m.name }
             val checks=probeRows.filter { it.metric==m.name }
@@ -133,14 +151,18 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
         }
     }
     var explicitlySelected by remember { mutableStateOf(false) }
-    val summary by produceState<BatteryDaySummary?>(null,now,querySession,battery) {
-        if(battery) value=withContext(Dispatchers.IO) { summarizeBattery(app.db.agentDao().batterySummaryRows(now-86_400_000,now,querySession),settings.batterySettings.currentSeconds*2000L) }
+    val summary by produceState<BatteryDaySummary?>(null,displayedRequest.end,displayedRequest.session,battery,displayedRequest.revision) {
+        if(battery) value=withContext(Dispatchers.IO) { summarizeBattery(
+            if(history) app.db.agentDao().batterySummaryRowsThrough(displayedRequest.end-86_400_000,displayedRequest.end,displayedRequest.session,displayedRequest.revision)
+            else app.db.agentDao().batterySummaryRows(now-86_400_000,now,querySession),settings.batterySettings.currentSeconds*2000L) }
     }
-    val chartRequest=AgentChartRequest(metric,range,now,querySession,liveLatest.maxOfOrNull { it.id } ?: 0)
-    var chartRetry by remember(metric,querySession) { mutableIntStateOf(0) }
-    val chartLoad=if(history) rememberRetainedLoad(metric to querySession,chartRequest,retryKey=chartRetry,load={ target ->
-            loadAgentChart(app.db.agentDao(),target.metric,target.end-target.range,target.end,target.session)
-        },onError={app.logs.event("history_chart_load_failed",error=true,probeMetric=metric.name)})
+    val chartRequest=AgentChartRequest(metric,displayedRequest.range,displayedRequest.end,displayedRequest.session,
+        if(history) displayedRequest.revision else liveLatest.maxOfOrNull { it.id } ?: 0)
+    val chartLoad=if(history) RetainedLoadState(
+            snapshot=rangeSnapshot?.takeIf { it.request.metric==metric }
+                ?.let { LoadSnapshot(chartRequest,it.value.chart,it.completedAt) },
+            pending=if(rangeLoad.loading) chartRequest else null,
+            failedRequest=if(rangeLoad.failed) chartRequest else null)
         else RetainedLoadState<AgentChartRequest,List<AgentChartSeries>>()
     val chartSnapshot=chartLoad.snapshot
     val points=chartSnapshot?.value.orEmpty()
@@ -157,7 +179,10 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
     }
     LazyColumn(Modifier.fillMaxSize().testTag("agent_list").padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(16.dp),contentPadding=PaddingValues(bottom=24.dp)) {
         item { OutlinedButton(back) { Text(stringResource(R.string.at_back)) }; PageTitle(stringResource(if(groupFilter=="STORAGE") R.string.storage else if(battery) R.string.at_battery_title else R.string.at_self_title)) }
-        if(history) item { Text(stringResource(R.string.at_history_hint)) }
+        if(history) item {
+            Text(stringResource(R.string.at_history_hint))
+            HistoryRefreshControls(refresh,rangeSnapshot?.completedAt,rangeLoad.loading)
+        }
         if(history && rangeLoad.loading && currentRange==null) item {
             Text(stringResource(if(rangeLoad.snapshot==null) R.string.loading else R.string.refreshing_data),
                 Modifier.testTag("agent_range_loading"))
@@ -199,9 +224,9 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
                     if(r.count>1) Text(stringResource(R.string.at_summary,r.count,formatNumber(r.low ?: 0.0),formatNumber(r.high ?: 0.0),formatNumber(r.p95 ?: 0.0)))
                 }
                 Choice(range,listOf(300_000L to stringResource(R.string.at_five_minutes),3_600_000L to stringResource(R.string.hour),86_400_000L to stringResource(R.string.day),604_800_000L to stringResource(R.string.week),1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
-                HistoryChartControls("agent_${metric.name}",now-range,now,!window.atLatest,range>10_000,
+                HistoryChartControls("agent_${metric.name}",displayedRequest.end-displayedRequest.range,displayedRequest.end,!window.atLatest,range>10_000,
                 range<settings.retentionDays*86_400_000L,
-                earlier={window.earlier()},later={window.later()},zoomIn={window.zoomIn()},
+                earlier={window.earlier()},later={window.later(revision?.capturedAt ?: System.currentTimeMillis())},zoomIn={window.zoomIn()},
                 zoomOut={window.zoomOut(settings.retentionDays*86_400_000L)})
                 val plotFrom=chartSnapshot?.request?.let { it.end-it.range } ?: now-range
                 val plotTo=chartSnapshot?.request?.end ?: now
@@ -209,7 +234,7 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
                 if(!disabled && points.isEmpty()) MetricPlot(stringResource(metric.title),emptyList(),plotFrom,plotTo,metric.unit,
                     fixedMaximum=if(metric==AgentMetric.LEVEL) 100.0 else null,aggregation=metric.aggregation,
                     dataReady=chartSnapshot!=null,loading=chartLoad.loading,failed=chartLoad.failed,
-                    retry={chartRetry++},testId="agent_${metric.name}")
+                    retry={rangeRetry++},testId="agent_${metric.name}")
                 (if(disabled) emptyList() else points).forEachIndexed { index,series ->
                     val component=series.component
                     if(component.isNotEmpty()) Text(component)
@@ -219,7 +244,7 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
                         fixedMaximum=if(metric==AgentMetric.LEVEL) 100.0 else null,
                         aggregation=metric.aggregation, nominalStates=stateLabels,mixedBuckets=series.mixed,gapBuckets=series.gaps,
                         dataReady=true,loading=chartLoad.loading,failed=chartLoad.failed,
-                        retry={chartRetry++},testId="agent_${metric.name}_$index")
+                        retry={rangeRetry++},testId="agent_${metric.name}_$index")
                 }
             }
         }
@@ -229,8 +254,8 @@ private data class AgentChartRequest(val metric: AgentMetric,val range: Long,val
                 1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
         }
         item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(querySession,now-range,now,true)).encode();export.launch(if(battery) "battery.json" else "self-telemetry.json")}) {Text(stringResource(R.string.export_json))}
-            OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(querySession,now-range,now,false)).encode();export.launch(if(battery) "battery.csv" else "self-telemetry.csv")}) {Text(stringResource(R.string.export_csv))}
+            OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(displayedRequest.session,displayedRequest.end-displayedRequest.range,displayedRequest.end,true)).encode();export.launch(if(battery) "battery.json" else "self-telemetry.json")}) {Text(stringResource(R.string.export_json))}
+            OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(displayedRequest.session,displayedRequest.end-displayedRequest.range,displayedRequest.end,false)).encode();export.launch(if(battery) "battery.csv" else "self-telemetry.csv")}) {Text(stringResource(R.string.export_csv))}
         };exportMessage?.let { Text(stringResource(it)) } }
         if((!history || rangeLoad.snapshot!=null) && folded.isNotEmpty()) item(key="unavailable_agent") {
             UnavailableSection("agent",folded.size) {

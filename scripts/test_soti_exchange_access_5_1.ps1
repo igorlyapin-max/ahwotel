@@ -34,7 +34,8 @@ function Assert-ThrowsCode {
 function New-TestLogger {
     param([switch] $WithSink)
     $logger = New-Map
-    $logger['level'] = 'Off'; $logger['timeout'] = 1L; $logger['runId'] = 'test-run'
+    $logger['level'] = 'Off'; $logger['timeout'] = 1L; $logger['runId'] = 'test-run'; $logger['auditPath'] = 'test-audit'
+    $logger['writeAudit'] = { param($line) $script:AuditEvents++ }
     $logger['endpoint'] = if ($WithSink) { 'http://127.0.0.1:4318/v1/logs' } else { $null }
     if ($WithSink) {
         $logger['sendOtlp'] = { param($record) $script:AuditEvents++; $script:LastAuditEvent = $record['event'] }
@@ -96,6 +97,15 @@ $external = Copy-Map $device; $external['GroupPath'] = '/Corporate-External'
 Assert-Equal 'non_corporate_group' (Test-DeviceEligibility $external $cfg)['reason'] 'group boundary'
 $duplicate = Copy-Map $device; $duplicate['ExchangeOnlineEmailAccess'] = @($duplicate['ExchangeOnlineEmailAccess'][0], $duplicate['ExchangeOnlineEmailAccess'][0])
 Assert-Equal 'exchange_record_count' (Test-DeviceEligibility $duplicate $cfg)['reason'] 'duplicate exchange record'
+$invalidReference = Copy-Map $device; $invalidReference['ExchangeOnlineEmailAccess'][0]['ReferenceId'] = $null
+Assert-Equal 'exchange_reference_invalid' (Test-DeviceEligibility $invalidReference $cfg)['reason'] 'null reference rejected'
+foreach ($invalidValue in @('', '   ', 42L, @{ id = 'exchange-main' })) {
+    $invalidReference = Copy-Map $device; $invalidReference['ExchangeOnlineEmailAccess'][0]['ReferenceId'] = $invalidValue
+    Assert-Equal 'exchange_reference_invalid' (Test-DeviceEligibility $invalidReference $cfg)['reason'] 'non-string reference rejected'
+}
+$invalidReference = Copy-Map $device; $invalidList = [System.Collections.Generic.List[object]]::new(); $invalidList.Add('exchange-main')
+$invalidReference['ExchangeOnlineEmailAccess'][0]['ReferenceId'] = $invalidList
+Assert-Equal 'exchange_reference_invalid' (Test-DeviceEligibility $invalidReference $cfg)['reason'] 'array reference rejected'
 $paged = New-Map; $paged['Items'] = @($device); $paged['Next'] = 'page-2'
 Assert-ThrowsCode { [void] (ConvertTo-DeviceList $paged) } 'device_pagination_not_supported_use_filtered_path'
 $partial = New-Map; $partial['Items'] = @($device); $partial['TotalCount'] = 2L
@@ -152,9 +162,24 @@ Assert-ThrowsCode {
 Assert-Equal 1 $script:ActionCount 'ambiguous post not retried'
 $script:StateDevice = Copy-Map $device
 $script:ActionCount = 0
-$stdoutResult = Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger (New-TestLogger) -Approved $approved
-Assert-Equal 1 $script:ActionCount 'stdout-only action count'
-Assert-Equal 'allowed' $stdoutResult['results'][0]['outcome'] 'stdout-only apply outcome'
+$missingAuditLogger = New-TestLogger; [void] $missingAuditLogger.Remove('auditPath')
+Assert-ThrowsCode {
+    [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger $missingAuditLogger -Approved $approved)
+} 'audit_log_required_for_apply'
+Assert-Equal 0 $script:ActionCount 'missing audit prevents action'
+$script:AuditWriteCount = 0; $script:StateDevice = Copy-Map $device; $script:ActionCount = 0
+$failingLocalAudit = New-TestLogger
+$failingLocalAudit['writeAudit'] = { param($line) $script:AuditWriteCount++; if ($script:AuditWriteCount -eq 2) { Throw-ApiError 'audit_log_write_failed' } }
+Assert-ThrowsCode {
+    [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger $failingLocalAudit -Approved $approved)
+} 'audit_log_write_failed'
+Assert-Equal 0 $script:ActionCount 'failed pre-action audit prevents action'
+$script:AuditWriteCount = 0; $script:StateDevice = Copy-Map $device; $script:ActionCount = 0
+$failingLocalAudit['writeAudit'] = { param($line) $script:AuditWriteCount++; if ($script:AuditWriteCount -eq 3) { Throw-ApiError 'audit_log_write_failed' } }
+Assert-ThrowsCode {
+    [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $allow -Config $cfg -Logger $failingLocalAudit -Approved $approved)
+} 'after_action_manual_review'
+Assert-Equal 1 $script:ActionCount 'post-action audit failure is ambiguous'
 $script:StateDevice = Copy-Map $device
 $script:ActionCount = 0
 $failingSinkLogger = New-TestLogger -WithSink

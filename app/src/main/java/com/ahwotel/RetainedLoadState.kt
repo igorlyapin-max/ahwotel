@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicReference
 
-data class LoadSnapshot<K, V>(val request: K, val value: V)
+data class LoadSnapshot<K, V>(val request: K, val value: V, val completedAt: Long = System.currentTimeMillis())
 
 data class RetainedLoadState<K, V>(
     val snapshot: LoadSnapshot<K, V>? = null,

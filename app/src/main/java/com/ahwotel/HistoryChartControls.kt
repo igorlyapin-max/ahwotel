@@ -36,9 +36,9 @@ import androidx.compose.ui.unit.dp
     }
     fun zoomIn(minimum: Long = 10_000L) { range = (range / 2).coerceAtLeast(minimum) }
     fun zoomOut(maximum: Long) { range = (range * 2).coerceAtMost(maximum) }
-    fun latest(selectedRange: Long = range) {
+    fun latest(selectedRange: Long = range, now: Long = System.currentTimeMillis()) {
         range = selectedRange
-        end = System.currentTimeMillis()
+        end = now
         atLatest = true
     }
 }

@@ -15,10 +15,10 @@ release metadata. Live SOTI calls were not attempted because this environment ha
 
 ```text
 python3 scripts/test_soti_exchange_access.py
-14 tests: OK
+focused tests: OK
 
 python3 -m unittest discover -s scripts -p 'test_*.py'
-34 tests: OK
+all discovered tests: OK
 
 python3 -m py_compile scripts/soti_exchange_access.py scripts/test_soti_exchange_access.py
 PASS
@@ -31,8 +31,8 @@ Focused tests cover corporate group boundaries, management/enrollment state,
 quarantine and allowed states, multiple Exchange records, partial/paginated
 device collections, snapshot and policy binding, expiry, idempotency, live
 recheck before mutation, ambiguous POST handling without retry, secret file
-permissions, log redaction, mandatory external audit preflight and Collector log
-pipeline configuration.
+permissions, log redaction, mandatory durable local audit for `apply`, optional
+OTLP delivery and Collector log pipeline configuration.
 
 `ruff` is not installed in the workspace, so no Ruff result is claimed.
 

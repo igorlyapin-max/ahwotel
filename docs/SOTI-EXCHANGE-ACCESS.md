@@ -58,9 +58,19 @@ only `ExchangeOnlineEmailAccess` record on an otherwise eligible device. Its
 actual `ReferenceId` is bound into the inspection, approval and action. A
 non-empty list remains an exact allowlist. More than one matching record is
 ambiguous and produces a manual-review decision.
+`ReferenceId` itself must be a non-empty JSON string. Null, whitespace, numeric,
+array and object values produce `exchange_reference_invalid` and are never sent
+to the action endpoint.
 
 `otlpLogsEndpoint` is also optional. Omit it or use `null` for structured
 stdout/stderr only. An empty string or malformed URL is rejected.
+
+`auditLogPath` is optional for `auth-check`, `inspect` and `verify`, but required
+for `apply`. Set it to a private local JSONL file outside Git, for example
+`/secure/soti-exchange-audit.jsonl` or
+`C:\secure\soti-exchange-audit.jsonl`. The tool durably writes an event before
+and after every Exchange action. A failed local write blocks the next action;
+OTLP remains an optional additional sink.
 
 `apply` is blocked while `actionContractVerified` is `false`. Unknown collection
 shapes and paginated responses are rejected. For a tenant that paginates

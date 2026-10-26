@@ -1,5 +1,7 @@
 package com.ahwotel
 
+import androidx.sqlite.db.SimpleSQLiteQuery
+
 data class AgentChartSeries(val component: String, val points: List<ChartBucket>,
     val mixed: Set<Long>, val gaps: Set<Long>)
 
@@ -49,15 +51,50 @@ class AgentChartAccumulator(private val metric: AgentMetric, private val from: L
     }
 }
 
-suspend fun loadAgentChart(dao: AgentTelemetryDao,metric: AgentMetric,from: Long,to: Long,session: String? = null): List<AgentChartSeries> {
-    val through=dao.latestId()
-    val accumulator=AgentChartAccumulator(metric,from,to)
-    var afterTime=from; var afterId=0L
-    while(true) {
-        val page=dao.chartPage(metric.name,from,to,afterTime,afterId,through,session)
-        if(page.isEmpty()) break
-        page.filter { metric.acceptsStream(it.stream) }.forEach(accumulator::add)
-        afterTime=page.last().time; afterId=page.last().id
+suspend fun loadAgentChart(dao: AgentTelemetryDao,metric: AgentMetric,from: Long,to: Long,session: String? = null,
+    throughId: Long? = null): List<AgentChartSeries> {
+    val through=throughId ?: dao.latestId()
+    return dao.chart(agentChartQuery(metric,from,to,session,through)).groupBy { it.component }.map { (component,rows) ->
+        val mixed=mutableSetOf<Long>();val gaps=mutableSetOf<Long>()
+        val points=rows.map { row ->
+            val stateMixed=metric.aggregation==MetricAggregation.STATE && row.stateLow!=row.stateHigh
+            val gap=row.invalid>0 || row.segment<0
+            if(stateMixed) mixed+=row.bucket
+            if(gap) gaps+=row.bucket
+            val value=if(gap || stateMixed || row.sampleCount==0L) null else when(metric.aggregation) {
+                MetricAggregation.SUM -> row.sumTotal
+                MetricAggregation.MAX -> row.maximum
+                MetricAggregation.STATE -> row.stateLow
+                MetricAggregation.GAUGE -> row.weightedTotal/row.sampleCount
+            }
+            ChartBucket(row.bucket,if(gap || stateMixed) -1 else row.segment,row.sessionId,row.time,
+                if(value==null) null else row.low,if(value==null) null else row.high,value,
+                row.sampleCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        }
+        AgentChartSeries(component,points,mixed,gaps)
     }
-    return accumulator.finish()
+}
+
+internal fun agentChartQuery(metric: AgentMetric,from: Long,to: Long,session: String?,throughId: Long,
+    buckets: Int = 240): SimpleSQLiteQuery {
+    val bucketCount=buckets.coerceIn(10,1000)
+    val span=(to-from).coerceAtLeast(1)
+    val stream=when(metric.group) { "BATTERY" -> "battery";"WEAR","PASSPORT" -> "wear";else -> "self" }
+    return SimpleSQLiteQuery("""SELECT component || CASE WHEN source LIKE '/%' THEN ' · ' || source ELSE '' END AS component,
+        MIN(((time-?)*?)/?,?) AS bucket,
+        CASE WHEN COUNT(DISTINCT segment)=1 AND COUNT(DISTINCT sessionId)=1 THEN MIN(segment) ELSE -1 END AS segment,
+        CASE WHEN COUNT(DISTINCT sessionId)=1 THEN MIN(sessionId) ELSE '' END AS sessionId,
+        MAX(time) AS time,
+        MIN(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN COALESCE(low,value) END) AS low,
+        MAX(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN COALESCE(high,value) END) AS high,
+        COALESCE(SUM(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN COALESCE(`sum`,value*CASE WHEN count>0 THEN count ELSE 1 END) ELSE 0 END),0) AS weightedTotal,
+        COALESCE(SUM(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN value ELSE 0 END),0) AS sumTotal,
+        MAX(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN value END) AS maximum,
+        MIN(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN value END) AS stateLow,
+        MAX(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN value END) AS stateHigh,
+        COALESCE(SUM(CASE WHEN status='AVAILABLE' AND value IS NOT NULL AND value=value AND ABS(value)<=1.0e308 THEN CASE WHEN count>0 THEN count ELSE 1 END ELSE 0 END),0) AS sampleCount,
+        SUM(CASE WHEN status!='AVAILABLE' OR value IS NULL OR value!=value OR ABS(value)>1.0e308 THEN 1 ELSE 0 END) AS invalid
+        FROM telemetry_records WHERE metric=? AND stream=? AND time BETWEEN ? AND ? AND id<=? AND (? IS NULL OR sessionId=?)
+        GROUP BY component || CASE WHEN source LIKE '/%' THEN ' · ' || source ELSE '' END,bucket ORDER BY component,time""".trimIndent(),
+        arrayOf<Any?>(from,bucketCount,span,bucketCount-1,metric.name,stream,from,to,throughId,session,session))
 }

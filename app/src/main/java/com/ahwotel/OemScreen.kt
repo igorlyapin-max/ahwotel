@@ -20,10 +20,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.room.withTransaction
 import com.ahwotel.oem.*
 import kotlinx.coroutines.*
 
-private data class OemPeriodRequest(val from: Long,val to: Long,val session: String?,val history: Boolean)
+private data class OemPeriodRequest(val from: Long,val to: Long,val session: String?,val history: Boolean,
+    val revision: Long,val inventoryRevision: Long,val eventRevision: Long,val graphKey: String?)
+private data class OemPeriodData(val presence: List<MetricPresence>,val observations: List<OemObservation>,
+    val inventories: List<OemInventoryRow>,val events: List<OemEventRow>,val chartKey: String?,val chart: List<ChartBucket>)
 private data class OemChartRequest(val metric: OemMetric,val provider: String,val session: String?,
     val from: Long,val to: Long,val revision: Long)
 
@@ -45,37 +49,41 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
 
 @Composable fun OemScreen(app: MonitorApp, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
-    val latest by app.oem.latest.collectAsStateWithLifecycle()
+    var showHistory by rememberSaveable { mutableStateOf(false) }
+    val refresh=rememberHistoryRefreshController(app,enabled=showHistory)
+    val revision=refresh.revision
+    val latest=if(showHistory) emptyMap() else app.oem.latest.collectAsStateWithLifecycle().value
     val profiles by app.oem.profiles.collectAsStateWithLifecycle()
     val checking by app.oem.checking.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
-    val inventoryFlow = remember { app.db.oemDao().inventories() }
-    val inventoryRows by inventoryFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val inventories by produceState<Map<String, List<InventoryEntry>>>(emptyMap(), inventoryRows) {
-        value = withContext(Dispatchers.IO) { inventoryRows.associate { it.provider to InventoryCodec.decode(it.payload) } }
-    }
-    val eventsFlow = remember { app.db.oemDao().recentEvents() }
-    val events by eventsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val sessionFlow = remember { app.db.dao().sessions() }
-    val sessions by sessionFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val liveInventoryRows=if(showHistory) emptyList() else remember { app.db.oemDao().inventories() }
+        .collectAsStateWithLifecycle(initialValue = emptyList()).value
+    val liveEvents=if(showHistory) emptyList() else remember { app.db.oemDao().recentEvents() }
+        .collectAsStateWithLifecycle(initialValue = emptyList()).value
+    val liveSessions=if(showHistory) emptyList() else remember { app.db.dao().sessions() }
+        .collectAsStateWithLifecycle(initialValue = emptyList()).value
+    val sessions=if(showHistory) revision?.sessions.orEmpty() else liveSessions
     val active by app.state.collectAsStateWithLifecycle()
     val liveSession=active.sessionId ?: sessions.firstOrNull()?.id ?: ""
-    val recorded by remember(liveSession) { app.db.oemDao().latestInSession(liveSession) }.collectAsStateWithLifecycle(initialValue=emptyList())
+    val recorded=if(showHistory) emptyList() else remember(liveSession) { app.db.oemDao().latestInSession(liveSession) }
+        .collectAsStateWithLifecycle(initialValue=emptyList()).value
     var session by rememberSaveable { mutableStateOf<String?>(null) }
     var sessionMenu by remember { mutableStateOf(false) }
     var mode by rememberSaveable { mutableStateOf("values") }
     var showProfiles by rememberSaveable { mutableStateOf(false) }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
     var categoryName by rememberSaveable { mutableStateOf(OemCategory.DEVICE.name) }
     val category = OemCategory.valueOf(categoryName)
     var inventoryProvider by rememberSaveable { mutableStateOf("android_standard") }
     var help by rememberSaveable { mutableStateOf<String?>(null) }
     var graph by rememberSaveable { mutableStateOf<String?>(null) }
     val window = remember { HistoryWindowState() }
-    LaunchedEffect(recorded,showHistory) { if(!showHistory || window.atLatest) window.end=System.currentTimeMillis() }
+    LaunchedEffect(showHistory,if(showHistory) revision?.capturedAt else recorded) {
+        if(showHistory && window.atLatest && revision!=null) window.end=revision.capturedAt
+        else if(!showHistory) window.end=System.currentTimeMillis()
+    }
     val range = window.range
-    val end = window.end
-    val from = window.from
+    val end = if(showHistory && window.atLatest) revision?.capturedAt ?: window.end else window.end
+    val from = end-window.range
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
@@ -92,16 +100,34 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             finally { exporting = false }
         }
     }
-    val periodRequest=OemPeriodRequest(from,end,session,showHistory)
+    val periodRequest=OemPeriodRequest(from,end,session,showHistory,revision?.oemThroughId ?: 0,
+        revision?.oemInventoryThroughId ?: 0,revision?.oemEventThroughId ?: 0,graph)
     var periodRetry by remember(showHistory,session) { mutableIntStateOf(0) }
-    val periodLoad=if(showHistory) rememberRetainedLoad(showHistory to session,periodRequest,retryKey=periodRetry,load={ target ->
-            app.db.oemDao().presence(target.from,target.to,target.session) to
-                app.db.oemDao().rangeLatest(target.from,target.to,target.session).map { it.observation() }
-        },onError={app.logs.event("history_range_load_failed",error=true)})
-        else RetainedLoadState<OemPeriodRequest,Pair<List<MetricPresence>,List<OemObservation>>>()
-    val currentPeriod=periodLoad.snapshot?.takeIf { it.request==periodRequest }?.value
-    val period=periodLoad.snapshot?.value
-    val displayed=if(showHistory) period?.second.orEmpty() else recorded.filter { it.sessionId==liveSession }.map { it.observation() }
+    val periodLoad=if(showHistory) rememberRetainedLoad("oem_history",periodRequest,retryKey=periodRetry,load={ target -> app.db.withTransaction {
+            val chartParts=target.graphKey?.split(":",limit=2)
+            val chartMetric=chartParts?.getOrNull(1)?.let { runCatching { OemMetric.valueOf(it) }.getOrNull() }
+            OemPeriodData(
+                app.db.oemDao().presenceThrough(target.from,target.to,target.session,target.revision),
+                app.db.oemDao().rangeLatestThrough(target.from,target.to,target.session,target.revision).map { it.observation() },
+                app.db.oemDao().inventoriesThrough(target.from,target.to,target.session,target.inventoryRevision),
+                app.db.oemDao().recentEventsThrough(target.from,target.to,target.session,target.eventRevision),
+                target.graphKey,
+                if(chartMetric!=null && chartParts.size==2) app.db.oemDao().chart(oemChartQuery(chartMetric,chartParts[0],target.session,target.from,target.to,target.revision)) else emptyList())
+        } },onError={app.logs.event("history_range_load_failed",error=true)})
+        else RetainedLoadState<OemPeriodRequest,OemPeriodData>()
+    val periodSnapshot=periodLoad.snapshot
+    val currentPeriod=periodSnapshot?.value
+    val period=periodSnapshot?.value
+    val displayedRequest=periodSnapshot?.request ?: periodRequest
+    val displayFrom=if(showHistory) displayedRequest.from else from
+    val displayEnd=if(showHistory) displayedRequest.to else end
+    val displaySession=if(showHistory) displayedRequest.session else session
+    val inventoryRows=if(showHistory) period?.inventories.orEmpty() else liveInventoryRows
+    val events=if(showHistory) period?.events.orEmpty() else liveEvents
+    val inventories by produceState<Map<String, List<InventoryEntry>>>(emptyMap(), inventoryRows) {
+        value = withContext(Dispatchers.IO) { inventoryRows.associate { it.provider to InventoryCodec.decode(it.payload) } }
+    }
+    val displayed=if(showHistory) period?.observations.orEmpty() else recorded.filter { it.sessionId==liveSession }.map { it.observation() }
     @Composable fun MetricCard(metric: OemMetric) {
         val title=oemMetricTitle(metric)
         val rows=displayed.filter { it.metric==metric }.sortedBy { it.provider }
@@ -128,20 +154,21 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                     val key=OemCoordinator.key(row)
                     OutlinedButton({graph=if(graph==key) null else key}) { Text(stringResource(R.string.oem_graph)) }
                     if(graph==key) {
-                        var chartRetry by remember(metric,row.provider,session) { mutableIntStateOf(0) }
-                        HistoryChartControls("oem_${metric.name}_${row.provider}",from,end,!window.atLatest,
+                        HistoryChartControls("oem_${metric.name}_${row.provider}",displayFrom,displayEnd,!window.atLatest,
                             range>10_000,range<settings.retentionDays*86_400_000L,
-                            earlier={window.earlier()},later={window.later()},zoomIn={window.zoomIn()},
+                            earlier={window.earlier()},later={window.later(revision?.capturedAt ?: System.currentTimeMillis())},zoomIn={window.zoomIn()},
                             zoomOut={window.zoomOut(settings.retentionDays*86_400_000L)})
-                        val request=OemChartRequest(metric,row.provider,session,from,end,row.time)
-                        val chartLoad=rememberRetainedLoad(Triple(metric,row.provider,session),request,retryKey=chartRetry,load={ target ->
-                            app.db.oemDao().chart(oemChartQuery(target.metric,target.provider,target.session,target.from,target.to))
-                        },onError={app.logs.event("history_chart_load_failed",error=true,probeMetric=metric.name)})
+                        val request=OemChartRequest(metric,row.provider,displaySession,displayFrom,displayEnd,displayedRequest.revision)
+                        val chartLoad=RetainedLoadState(
+                            snapshot=periodSnapshot?.takeIf { it.value.chartKey==key }
+                                ?.let { LoadSnapshot(request,it.value.chart,it.completedAt) },
+                            pending=if(periodLoad.loading) request else null,
+                            failedRequest=if(periodLoad.failed) request else null)
                         val snapshot=chartLoad.snapshot
                         MetricPlot(title,snapshot?.value.orEmpty(),snapshot?.request?.from ?: from,snapshot?.request?.to ?: end,metric.unit,
                             fixedMaximum=if(metric.kind==ValueKind.BOOLEAN) 1.0 else if(metric==OemMetric.OEM_SYSTEM_CPU) 100.0 else null,
                             states=if(metric.kind==ValueKind.BOOLEAN) listOf(oemCode("FALSE"),oemCode("TRUE")) else emptyList(),
-                            dataReady=snapshot!=null,loading=chartLoad.loading,failed=chartLoad.failed,retry={chartRetry++},
+                            dataReady=snapshot!=null,loading=chartLoad.loading,failed=chartLoad.failed,retry={periodRetry++},
                             testId="oem_${metric.name}_${row.provider}")
                     }
                 }
@@ -174,7 +201,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             if (showProfiles) Text(stringResource(R.string.oem_profile_hint), style = MaterialTheme.typography.bodySmall)
         } }
         item { Panel(stringResource(R.string.history)) {
-            Text("${formatTime(from)} — ${formatTime(end)}", style = MaterialTheme.typography.bodySmall)
+            Text("${formatTime(displayFrom)} — ${formatTime(displayEnd)}", style = MaterialTheme.typography.bodySmall)
             OutlinedButton({ showHistory = !showHistory }) { Text(stringResource(R.string.oem_period_export)) }
             if (showHistory) {
             Text(stringResource(R.string.oem_history_hint), style = MaterialTheme.typography.bodySmall)
@@ -189,12 +216,14 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                 }
             }
             Choice(range, listOf(3_600_000L to stringResource(R.string.hour), 86_400_000L to stringResource(R.string.day),
-                604_800_000L to stringResource(R.string.week), settings.retentionDays * 86_400_000L to stringResource(R.string.all_history))) { window.latest(it) }
-            OutlinedButton({ window.latest() }) { Text(stringResource(R.string.oem_refresh)) }
-            Text("${formatTime(from)} — ${formatTime(end)}", style = MaterialTheme.typography.bodySmall)
+                604_800_000L to stringResource(R.string.week), settings.retentionDays * 86_400_000L to stringResource(R.string.all_history))) {
+                    window.latest(it,revision?.capturedAt ?: System.currentTimeMillis())
+                }
+            HistoryRefreshControls(refresh,periodSnapshot?.completedAt,periodLoad.loading)
+            Text("${formatTime(displayFrom)} — ${formatTime(displayEnd)}", style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.oem_export_hint), style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(session, from, end, true)).encode(); export.launch("ahwotel-oem.json") }) { Text(stringResource(R.string.oem_full_json)) }
-            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(session, from, end, false)).encode(); export.launch("ahwotel-oem.csv") }) { Text(stringResource(R.string.oem_numeric_csv)) }
+            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(displaySession, displayFrom, displayEnd, true)).encode(); export.launch("ahwotel-oem.json") }) { Text(stringResource(R.string.oem_full_json)) }
+            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(displaySession, displayFrom, displayEnd, false)).encode(); export.launch("ahwotel-oem.csv") }) { Text(stringResource(R.string.oem_numeric_csv)) }
             message?.let { Text(stringResource(it)) }
             }
         } }
@@ -202,7 +231,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             item { Choice(categoryName, OemCategory.entries.map { it.name to oemCategoryTitle(it) }) { categoryName = it } }
             val group=OemMetric.entries.filter { it.category==category }
             val folded=group.filter { m ->
-                if(showHistory) currentPeriod?.first?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
+                if(showHistory) currentPeriod?.presence?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
                 else {
                     val recorded=displayed.filter { it.metric==m }
                     val checks=latest.values.filter { it.metric==m }
@@ -255,7 +284,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             } }
         } else {
             item { Text(stringResource(R.string.oem_changes_limit)) }
-            items(events.filter { it.time in from..end && (session == null || it.sessionId == session) }, key = { "event:${it.id}" }) { event ->
+            items(events.filter { !showHistory || (it.time in displayFrom..displayEnd && (displaySession == null || it.sessionId == displaySession)) }, key = { "event:${it.id}" }) { event ->
                 Panel(oemCode(event.kind)) {
                     val metric = OemMetric.entries.find { it.wire == event.subject }
                     Text(metric?.let { oemMetricTitle(it) } ?: event.subject)

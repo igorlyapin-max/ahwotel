@@ -177,6 +177,31 @@ class HistoryNavigationAcceptanceTest {
         ui.onNodeWithText(ui.activity.getString(R.string.no_data)).assertIsDisplayed()
     }
 
+    @Test fun incomingSamplesDoNotRefreshHistoryUntilExplicitRequest(): Unit = runBlocking {
+        val now=System.currentTimeMillis()
+        app.db.dao().sample(SampleRow(sessionId="snapshot",time=now,elapsed=1,segment=0,cpu=10.0,screenOn=true))
+        ui.setContent { Theme {
+            val refresh=rememberHistoryRefreshController(app)
+            Text("sample=${refresh.revision?.sampleThroughId ?: -1}",Modifier.testTag("history_revision"))
+            HistoryRefreshControls(refresh)
+        } }
+        ui.waitUntil(10_000) {
+            ui.onNodeWithTag("history_revision").fetchSemanticsNode().config[SemanticsProperties.Text]
+                .single().text != "sample=-1"
+        }
+        val frozen=ui.onNodeWithTag("history_revision").fetchSemanticsNode().config[SemanticsProperties.Text].single().text
+        withContext(Dispatchers.IO) {
+            app.db.dao().sample(SampleRow(sessionId="snapshot",time=now+1,elapsed=2,segment=0,cpu=20.0,screenOn=true))
+        }
+        ui.waitForIdle()
+        ui.onNodeWithTag("history_revision").assertTextEquals(frozen)
+        ui.onNodeWithTag("history_refresh").performClick()
+        ui.waitUntil(10_000) {
+            ui.onNodeWithTag("history_revision").fetchSemanticsNode().config[SemanticsProperties.Text]
+                .single().text != frozen
+        }
+    }
+
     @Test fun supersededLoadCannotPublishOrClearTheNewestPendingRequest(): Unit = runBlocking {
         var request by mutableIntStateOf(1)
         val first=CompletableDeferred<List<ChartBucket>>()

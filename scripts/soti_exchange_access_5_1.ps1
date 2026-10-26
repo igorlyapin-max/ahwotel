@@ -492,6 +492,10 @@ function Assert-Config {
             Throw-ContractError 'otlpLogsEndpoint_must_end_with_v1_logs'
         }
     }
+    $auditPath = Get-MapValue $config 'auditLogPath'
+    if ($null -ne $auditPath -and ($auditPath -isnot [string] -or [string]::IsNullOrWhiteSpace($auditPath))) {
+        Throw-ContractError 'invalid_config:auditLogPath'
+    }
     return $config
 }
 
@@ -609,11 +613,19 @@ function Test-DeviceEligibility {
     $records = Get-DottedValue $Device $fields['exchangeAccess']
     if (-not (Test-IsArray $records)) { Throw-ContractError 'exchange_access_must_be_array' }
     $matching = @()
+    $invalidReferences = 0
     $referenceAllowlist = $Config['exchangeReferenceIds']
     foreach ($record in $records) {
         if (-not (Test-IsMap $record)) { Throw-ContractError 'exchange_access_contains_non_object' }
-        $reference = [string] (Get-DottedValue $record $fields['exchangeReferenceId'])
+        $reference = Get-DottedValue $record $fields['exchangeReferenceId']
+        if ($reference -isnot [string] -or [string]::IsNullOrWhiteSpace($reference)) {
+            $invalidReferences++; continue
+        }
         if ($referenceAllowlist.Count -eq 0 -or (Test-StringInList $reference $referenceAllowlist)) { $matching += $record }
+    }
+    if ($invalidReferences -gt 0) {
+        $result['decision'] = 'manual'; $result['reason'] = 'exchange_reference_invalid'; $result['recordCount'] = [long] $records.Count
+        return $result
     }
     if ($matching.Count -ne 1) {
         $result['decision'] = 'manual'; $result['reason'] = 'exchange_record_count'; $result['recordCount'] = [long] $matching.Count
@@ -641,7 +653,8 @@ function Protect-LogValue {
         foreach ($keyValue in $Value.Keys) {
             $key = [string] $keyValue
             if ($key -match $script:SensitiveKeyPattern) { $result[$key] = '***' }
-            elseif ($key.Equals('deviceId', [StringComparison]::OrdinalIgnoreCase)) {
+            elseif ($key.Equals('deviceId', [StringComparison]::OrdinalIgnoreCase) -or
+                $key.Equals('referenceId', [StringComparison]::OrdinalIgnoreCase)) {
                 $result[$key] = 'sha256:' + (Get-Sha256Hex ([string] $Value[$key])).Substring(0, 12)
             }
             else { $result[$key] = Protect-LogValue $Value[$key] }
@@ -710,13 +723,45 @@ function Send-OtlpRecord {
 }
 
 function New-EventLogger {
-    param([Parameter(Mandatory)][System.Collections.IDictionary] $Config, [Parameter(Mandatory)][string] $RunId)
+    param([Parameter(Mandatory)][System.Collections.IDictionary] $Config, [Parameter(Mandatory)][string] $RunId, [switch] $RequireAudit)
     $logger = New-Map
     $logger['level'] = $Config['diagnostic']
     $logger['endpoint'] = Get-MapValue $Config 'otlpLogsEndpoint'
     $logger['timeout'] = $Config['requestTimeoutSeconds']
     $logger['runId'] = $RunId
+    $auditPath = Get-MapValue $Config 'auditLogPath'
+    if ($RequireAudit -and [string]::IsNullOrWhiteSpace([string] $auditPath)) { Throw-ContractError 'audit_log_required_for_apply' }
+    if (-not [string]::IsNullOrWhiteSpace([string] $auditPath)) {
+        $fullPath = [IO.Path]::GetFullPath([string] $auditPath)
+        $parent = [IO.Path]::GetDirectoryName($fullPath)
+        if (-not [IO.Directory]::Exists($parent)) { Throw-ContractError 'audit_log_parent_missing' }
+        if ([IO.File]::Exists($fullPath) -and (([IO.File]::GetAttributes($fullPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            Throw-ContractError 'audit_log_symlink_forbidden'
+        }
+        if (-not [IO.File]::Exists($fullPath)) {
+            $created = [IO.File]::Open($fullPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+            $created.Dispose(); Set-PrivateFilePermissions $fullPath
+        }
+        Test-SecretFilePermissions $fullPath
+        $logger['auditPath'] = $fullPath
+    }
     return $logger
+}
+
+function Write-AuditLine {
+    param([Parameter(Mandatory)][System.Collections.IDictionary] $Logger, [Parameter(Mandatory)][string] $Line)
+    if ($Logger.Contains('writeAudit')) { & $Logger['writeAudit'] $Line; return }
+    $path = [string] (Get-MapValue $Logger 'auditPath')
+    if ([string]::IsNullOrWhiteSpace($path)) { return }
+    try {
+        $stream = [IO.File]::Open($path, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        try {
+            $bytes = $script:Utf8NoBom.GetBytes($Line + "`n")
+            $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true)
+        }
+        finally { $stream.Dispose() }
+    }
+    catch { Throw-ApiError 'audit_log_write_failed' }
 }
 
 function Write-Event {
@@ -734,6 +779,7 @@ function Write-Event {
     $record['metadata'] = Protect-LogValue $Metadata
     $line = $record | ConvertTo-Json -Depth 100 -Compress
     if ($Severity -in @('WARN', 'ERROR')) { [Console]::Error.WriteLine($line) } else { [Console]::Out.WriteLine($line) }
+    Write-AuditLine $Logger $line
     $endpoint = $Logger['endpoint']
     if (-not [string]::IsNullOrEmpty($endpoint)) {
         try {
@@ -1018,8 +1064,9 @@ function Invoke-ApprovedActions {
         [Parameter(Mandatory)][System.Collections.IList] $Approved
     )
     if (-not $Config['actionContractVerified']) { Throw-ContractError 'action_contract_not_verified' }
+    if ([string]::IsNullOrWhiteSpace([string] (Get-MapValue $Logger 'auditPath'))) { Throw-ContractError 'audit_log_required_for_apply' }
     $preflight = New-Map; $preflight['approvals'] = [long] $Approved.Count
-    $preflight['auditSink'] = if ([string]::IsNullOrEmpty([string] $Logger['endpoint'])) { 'stdout' } else { 'stdout+otlp' }
+    $preflight['auditSink'] = if ([string]::IsNullOrEmpty([string] $Logger['endpoint'])) { 'stdout+file' } else { 'stdout+file+otlp' }
     Write-Event $Logger 'apply_audit_preflight' -Metadata $preflight
     $results = @()
     foreach ($approvedItem in $Approved) {
@@ -1035,6 +1082,8 @@ function Invoke-ApprovedActions {
             if (-not [string]::Equals([string] $current['referenceId'], $referenceId, [StringComparison]::Ordinal)) {
                 Throw-ContractError 'approved_reference_id_changed'
             }
+            $started = New-Map; $started['deviceId'] = $id; $started['referenceId'] = $referenceId
+            Write-Event $Logger 'exchange_action_started' -Metadata $started
             try { [void] (& $AllowExchange $id $referenceId) }
             catch [SotiApiException] {
                 $reread = Test-DeviceEligibility (& $GetDevice $id) $Config
@@ -1050,7 +1099,11 @@ function Invoke-ApprovedActions {
         else { Throw-ContractError ("device_no_longer_eligible:{0}" -f $current['reason']) }
         $result = New-Map; $result['deviceId'] = $id; $result['referenceId'] = $referenceId; $result['outcome'] = $outcome
         $results += $result
-        Write-Event $Logger 'exchange_access_result' -Metadata $result
+        try { Write-Event $Logger 'exchange_access_result' -Metadata $result }
+        catch [SotiApiException] {
+            if ($_.Exception.Message -eq 'audit_log_write_failed') { Throw-ApiError 'audit_log_write_failed_after_action_manual_review_required' }
+            throw
+        }
     }
     $outputValue = New-Map
     $outputValue['schemaVersion'] = [long] $script:SchemaVersion
@@ -1113,7 +1166,7 @@ function Invoke-SotiExchangeAccessMain {
         Assert-WindowsPowerShell51
         Assert-CommandArguments $Command
         $configValue = Assert-Config (Read-JsonFile $Config)
-        $logger = New-EventLogger $configValue $runId
+        $logger = New-EventLogger $configValue $runId -RequireAudit:($Command -eq 'apply')
         $approved = $null
         if ($Command -in @('apply', 'verify')) {
             $approved = Assert-Approval (Read-JsonFile $Report) (Read-JsonFile $Approvals) $configValue

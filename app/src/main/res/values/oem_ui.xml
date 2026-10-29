@@ -2,7 +2,7 @@
 <resources>
     <string name="oem_scope_compare">Android: %1$s; Knox: %2$s. Check the provider on the reading</string>
     <string name="oem_details">Availability details</string>
-    <string name="oem_period_export">Period and export</string>
+    <string name="oem_period_export">Period</string>
     <string name="oem_refresh">Refresh period</string>
     <string name="oem_title">Extended telemetry / OEM</string>
     <string name="oem_enabled">Collect extended telemetry</string>

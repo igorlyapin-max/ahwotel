@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,18 +17,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.withTransaction
 import kotlinx.coroutines.*
+import java.util.TimeZone
 import kotlin.math.abs
 
-private data class HistoryAvailabilityRequest(val session: String?,val from: Long,val to: Long,
+internal data class HistoryAvailabilityRequest(val session: String?,val from: Long,val to: Long,
     val sampleRevision: Long,val agentRevision: Long)
+internal fun historyExportReady(revision: HistoryRevision?, current: HistoryAvailabilityRequest,
+    loaded: HistoryAvailabilityRequest?, rangeLoading: Boolean, refreshLoading: Boolean) =
+    revision != null && loaded == current && !rangeLoading && !refreshLoading
 private data class HistoryRangeData(val readings: Map<Metric,MetricReading>,val available: Set<Metric>,
     val charts: Map<Metric,List<ChartBucket>>)
 private val historyMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,Metric.MEMORY_AVAILABLE,
@@ -36,13 +43,13 @@ private val historyMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,
 @Composable fun HistoryScreen(app: MonitorApp) {
     var extraPage by remember { mutableStateOf<String?>(null) }
     val refresh = rememberHistoryRefreshController(app)
+    val screenModel: HistoryScreenViewModel = viewModel()
     val revision = refresh.revision
     val sessions = revision?.sessions.orEmpty()
-    var selected by remember { mutableStateOf<String?>(null) }
+    val selected = screenModel.selectedSession
     var expanded by remember { mutableStateOf(false) }
     val settings by app.settings.collectAsStateWithLifecycle()
-    val window = remember { HistoryWindowState() }
-    var lastSelection by remember { mutableStateOf<String?>(null) }
+    val window = screenModel.window
     if (extraPage != null) {
         key("history:$extraPage") {
             AgentTelemetryScreen(app, extraPage == "battery", history=true, session=selected,
@@ -90,21 +97,12 @@ private val historyMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,
     val displayEnd=displayedRequest.to
     val displayRevision=revision?.copy(sampleThroughId=displayedRequest.sampleRevision,
         agentThroughId=displayedRequest.agentRevision)
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var exporting by remember { mutableStateOf(false) }
-    var exportMessage by remember { mutableStateOf<Int?>(null) }
-    var exportSpec by remember { mutableStateOf(ExportSpec(null, 0, Long.MAX_VALUE, false)) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if (uri != null) scope.launch {
-            exporting = true
-            exportMessage = try {
-                withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { Exporter.history(app, it, exportSpec) } ?: error("output_unavailable") }
-                R.string.export_done
-            } catch (_: Exception) { R.string.export_failed }
-            exporting = false
-        }
+    val exportState by screenModel.export.collectAsStateWithLifecycle()
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri == null) screenModel.cancelPicker() else screenModel.exportTo(uri)
     }
+    val exportReady = historyExportReady(revision, availabilityRequest, availabilitySnapshot?.request,
+        availabilityLoad.loading, refresh.loading)
     val unavailableMetrics=availability?.let { loaded -> historyMetrics.filter {
         it !in loaded.available && permanentlyUnavailable(loaded.readings.getValue(it).status)
     } }.orEmpty()
@@ -128,10 +126,12 @@ private val historyMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,
             Box {
                 OutlinedButton({ expanded = true }) { Text(selected ?: stringResource(R.string.all_sessions)) }
                 DropdownMenu(expanded, { expanded = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.all_sessions)) }, onClick = { selected = null; expanded = false })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.all_sessions)) }, onClick = {
+                        screenModel.selectSession(null); expanded = false
+                    })
                     sessions.forEach { session ->
                         DropdownMenuItem(text = { Column { Text(formatTime(session.startedAt)); Text(session.id, style = MaterialTheme.typography.labelSmall) } },
-                            onClick = { selected = session.id; window.end = session.endedAt ?: System.currentTimeMillis()
+                            onClick = { screenModel.selectSession(session.id); window.end = session.endedAt ?: System.currentTimeMillis()
                                 window.atLatest = session.endedAt == null
                                 window.range = (window.end - session.startedAt + 2000).coerceAtLeast(60_000); expanded = false })
                     }
@@ -151,12 +151,62 @@ private val historyMetrics=listOf(Metric.CPU,Metric.CPU_WAIT,Metric.PROBE_DELAY,
             Text(stringResource(R.string.chart_hint), style = MaterialTheme.typography.bodySmall)
             HistoryRefreshControls(refresh,availabilitySnapshot?.completedAt,availabilityLoad.loading)
             Text(stringResource(R.string.reading_export_scope),style=MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = !exporting, onClick = { exportSpec = ExportSpec(displaySession, displayFrom, displayEnd, false); export.launch("ahwotel-history.csv") }) { Text(stringResource(R.string.export_csv)) }
-                OutlinedButton(enabled = !exporting, onClick = { exportSpec = ExportSpec(displaySession, displayFrom, displayEnd, true); export.launch("ahwotel-history.json") }) { Text(stringResource(R.string.export_json)) }
+            val selectedGroups = screenModel.selectedGroups
+            HistoryExportGroup.entries.forEach { group ->
+                val label = stringResource(when(group) {
+                    HistoryExportGroup.DEVICE -> R.string.export_group_device
+                    HistoryExportGroup.AGENT_SIGNALS -> R.string.export_group_agent_signals
+                    HistoryExportGroup.PERFORMANCE -> R.string.export_group_performance
+                    HistoryExportGroup.BATTERY -> R.string.export_group_battery
+                    HistoryExportGroup.SELF_TELEMETRY -> R.string.export_group_self
+                    HistoryExportGroup.OEM -> R.string.export_group_oem
+                })
+                Row(Modifier.fillMaxWidth().testTag("export_group_${group.name.lowercase()}").toggleable(
+                    value = group in selectedGroups,
+                    role = Role.Checkbox,
+                    onValueChange = { checked ->
+                        val changed = if (checked) selectedGroups + group else selectedGroups - group
+                        screenModel.selectGroups(changed)
+                    },
+                ).semantics(mergeDescendants = true) { contentDescription = label },
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(checked = group in selectedGroups, onCheckedChange = null)
+                    Text(label)
+                }
             }
-            if (exporting) Text(stringResource(R.string.exporting))
-            exportMessage?.let { Text(stringResource(it)) }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                val csvLabel = stringResource(R.string.export_format_csv)
+                val jsonLabel = stringResource(R.string.export_format_json)
+                Row(Modifier.selectable(selected = !screenModel.exportJson, role = Role.RadioButton) { screenModel.selectJson(false) }
+                    .semantics(mergeDescendants = true) { contentDescription = csvLabel },
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    RadioButton(selected = !screenModel.exportJson, onClick = null); Text(csvLabel)
+                }
+                Row(Modifier.selectable(selected = screenModel.exportJson, role = Role.RadioButton) { screenModel.selectJson(true) }
+                    .semantics(mergeDescendants = true) { contentDescription = jsonLabel },
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    RadioButton(selected = screenModel.exportJson, onClick = null); Text(jsonLabel)
+                }
+            }
+            if (selectedGroups.isEmpty()) Text(stringResource(R.string.export_select_group), color = MaterialTheme.colorScheme.error)
+            Button(enabled = exportReady && !exportState.running && selectedGroups.isNotEmpty(), onClick = {
+                val current = requireNotNull(revision)
+                screenModel.prepare(HistoryArchiveSpec(availabilityRequest.session, availabilityRequest.from,
+                    availabilityRequest.to, screenModel.exportJson, selectedGroups, settings.language,
+                    TimeZone.getDefault().id, capturedAt = current.capturedAt,
+                    sampleThroughId = current.sampleThroughId, agentThroughId = current.agentThroughId,
+                    oemThroughId = current.oemThroughId, oemInventoryThroughId = current.oemInventoryThroughId,
+                    oemEventThroughId = current.oemEventThroughId))
+                export.launch("ahwotel-history.zip")
+            }, modifier = Modifier.testTag("history_export")) {
+                Text(stringResource(R.string.export_action))
+            }
+            if (exportState.running) Text(stringResource(R.string.exporting))
+            exportState.result?.let { result -> Text(stringResource(when(result) {
+                "done" -> R.string.export_done
+                "interrupted" -> R.string.export_interrupted
+                else -> R.string.export_failed
+            })) }
         } }
         if(availabilityLoad.loading && availability==null) item {
             Text(stringResource(if(availabilityLoad.snapshot==null) R.string.loading else R.string.refreshing_data),

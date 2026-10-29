@@ -112,6 +112,8 @@ interface MonitorDao {
 
     @Query("SELECT * FROM samples WHERE id>:after AND (:session IS NULL OR sessionId=:session) AND time BETWEEN :from AND :to ORDER BY id LIMIT 500")
     suspend fun page(after: Long, session: String?, from: Long, to: Long): List<SampleRow>
+    @Query("SELECT * FROM samples WHERE id>:after AND id<=:throughId AND (:session IS NULL OR sessionId=:session) AND time BETWEEN :from AND :to ORDER BY id LIMIT 500")
+    suspend fun pageThrough(after: Long, throughId: Long, session: String?, from: Long, to: Long): List<SampleRow>
     @Query("DELETE FROM samples WHERE time < :cutoff") suspend fun expire(cutoff: Long): Int
     @Query("DELETE FROM samples WHERE id IN (SELECT id FROM samples ORDER BY time LIMIT :count)") suspend fun trim(count: Int): Int
     @Query("DELETE FROM sessions WHERE status!='RUNNING' AND COALESCE(endedAt,startedAt)<:cutoff AND id NOT IN (SELECT sessionId FROM samples UNION SELECT sessionId FROM oem_observations UNION SELECT sessionId FROM oem_inventory UNION SELECT sessionId FROM oem_events UNION SELECT sessionId FROM telemetry_records)") suspend fun expireSessions(cutoff: Long)

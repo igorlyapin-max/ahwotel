@@ -49,7 +49,7 @@ AgentCosts accumulates a bounded set of component counters. Internal self serial
 
 Self CPU fraction is INCOMPLETE: synchronous sampling thread CPU / process CPU, with a minimum denominator. Async persistence and scheduling CPU cannot be attributed exactly. It must not be used as proof of the complete 5% overhead objective. Controlled off/on comparisons include those effects, but short on-device experiments are preliminary. CPU, PSS, wakelock and network budgets from the TZ remain product targets, not universal Android limits.
 
-Metrics depending on a backend (fleet comparisons, regression significance, overnight population baselines, impact score, remote sampling) are outside this APK increment. Local exports retain version/configuration/model dimensions for future collector-side analysis.
+Metrics depending on a backend (fleet comparisons, regression significance, overnight population baselines, impact score, remote sampling) are outside this APK increment. Battery and Self records are selected from the unified History ZIP export; localized `datetime` replaces epoch fields while numeric JSON values remain standard. Local exports retain version/configuration/model dimensions for future collector-side analysis.
 
 ## Code 9 review corrections
 

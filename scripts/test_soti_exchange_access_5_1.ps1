@@ -160,6 +160,13 @@ Assert-ThrowsCode {
     [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $ambiguous -Config $cfg -Logger $sinkLogger -Approved $approved)
 } 'exchange_action_ambiguous_manual_review_required'
 Assert-Equal 1 $script:ActionCount 'ambiguous post not retried'
+Assert-Equal 'exchange_action_finished' $script:LastAuditEvent 'ambiguous action has final audit event'
+$script:StateDevice = Copy-Map $device
+$unexpected = { param($id, $referenceId) $script:ActionCount++; $script:StateDevice['ExchangeOnlineEmailAccess'][0]['Status'] = 'Blocked' }
+Assert-ThrowsCode {
+    [void] (Invoke-ApprovedActions -GetDevice $getDevice -AllowExchange $unexpected -Config $cfg -Logger $sinkLogger -Approved $approved)
+} 'unexpected_state_after_action'
+Assert-Equal 'exchange_action_finished' $script:LastAuditEvent 'unexpected state has final audit event'
 $script:StateDevice = Copy-Map $device
 $script:ActionCount = 0
 $missingAuditLogger = New-TestLogger; [void] $missingAuditLogger.Remove('auditPath')

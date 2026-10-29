@@ -23,11 +23,23 @@ import androidx.compose.ui.unit.dp
     initialRange: Long = 86_400_000L,
     initialEnd: Long = System.currentTimeMillis(),
     initialAtLatest: Boolean = true,
+    private val onChanged: (Long, Long, Boolean) -> Unit = { _, _, _ -> },
 ) {
-    var range by mutableLongStateOf(initialRange)
-    var end by mutableLongStateOf(initialEnd)
-    var atLatest by mutableStateOf(initialAtLatest)
+    private var rangeState by mutableLongStateOf(initialRange)
+    private var endState by mutableLongStateOf(initialEnd)
+    private var latestState by mutableStateOf(initialAtLatest)
+    var range: Long
+        get() = rangeState
+        set(value) { rangeState = value; changed() }
+    var end: Long
+        get() = endState
+        set(value) { endState = value; changed() }
+    var atLatest: Boolean
+        get() = latestState
+        set(value) { latestState = value; changed() }
     val from get() = end - range
+
+    private fun changed() = onChanged(rangeState, endState, latestState)
 
     fun earlier() { end -= range / 2; atLatest = false }
     fun later(now: Long = System.currentTimeMillis()) {

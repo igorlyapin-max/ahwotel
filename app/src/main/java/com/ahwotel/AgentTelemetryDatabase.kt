@@ -45,6 +45,8 @@ data class AgentChartAggregate(val component: String,val bucket: Long,val segmen
     suspend fun chartPage(metric: String, from: Long, to: Long, afterTime: Long, afterId: Long, throughId: Long, session: String? = null): List<TelemetryRecord>
     @Query("SELECT * FROM telemetry_records WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 300")
     suspend fun page(after: Long, from: Long, to: Long, session: String? = null): List<TelemetryRecord>
+    @Query("SELECT * FROM telemetry_records WHERE id>:after AND id<=:throughId AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 300")
+    suspend fun pageThrough(after: Long, throughId: Long, from: Long, to: Long, session: String? = null): List<TelemetryRecord>
     @Query("DELETE FROM telemetry_records WHERE time<:cutoff") suspend fun expire(cutoff: Long): Int
     @Query("SELECT COALESCE(SUM(length(metadata)+length(COALESCE(text,''))+400),0) FROM telemetry_records WHERE stream='self'") suspend fun selfBytes(): Long
     @Query("DELETE FROM telemetry_records WHERE id IN (SELECT id FROM telemetry_records WHERE (:stream IS NULL OR stream=:stream) ORDER BY time LIMIT 500)")

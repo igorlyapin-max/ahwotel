@@ -1076,16 +1076,44 @@ function Invoke-ApprovedActions {
             }
             $started = New-Map; $started['deviceId'] = $id; $started['referenceId'] = $referenceId
             Write-Event $Logger 'exchange_action_started' -Metadata $started
-            try { [void] (& $AllowExchange $id $referenceId) }
-            catch [SotiApiException] {
-                $reread = Test-DeviceEligibility (& $GetDevice $id) $Config
-                if ($reread['decision'] -ne 'noop') {
-                    $errorMetadata = New-Map; $errorMetadata['deviceId'] = $id
-                    Write-Event $Logger 'exchange_action_ambiguous' -Severity ERROR -Metadata $errorMetadata
-                    Throw-ApiError 'exchange_action_ambiguous_manual_review_required'
+            try {
+                try { [void] (& $AllowExchange $id $referenceId) }
+                catch [SotiApiException] {
+                    try { $reread = Test-DeviceEligibility (& $GetDevice $id) $Config }
+                    catch { Throw-ApiError 'exchange_action_reread_failed_manual_review_required' }
+                    if ($reread['decision'] -ne 'noop') {
+                        $errorMetadata = New-Map; $errorMetadata['deviceId'] = $id
+                        Write-Event $Logger 'exchange_action_ambiguous' -Severity ERROR -Metadata $errorMetadata
+                        Throw-ApiError 'exchange_action_ambiguous_manual_review_required'
+                    }
                 }
+                [void] (Wait-ForAllowed $GetDevice $Config $id $referenceId)
             }
-            [void] (Wait-ForAllowed $GetDevice $Config $id $referenceId)
+            catch {
+                $actionError = $_
+                $failureOutcome = switch ($_.Exception.Message) {
+                    'exchange_access_verification_timeout' { 'verification_timeout'; break }
+                    'unexpected_state_after_action' { 'unexpected_state'; break }
+                    'reference_id_changed_after_action' { 'unexpected_state'; break }
+                    'exchange_action_ambiguous_manual_review_required' { 'ambiguous'; break }
+                    'exchange_action_reread_failed_manual_review_required' { 'reread_failed'; break }
+                    default { 'action_failed' }
+                }
+                $finished = New-Map; $finished['deviceId'] = $id; $finished['referenceId'] = $referenceId; $finished['outcome'] = $failureOutcome
+                try { Write-Event $Logger 'exchange_action_finished' -Severity ERROR -Metadata $finished }
+                catch [SotiApiException] {
+                    if ($_.Exception.Message -eq 'audit_log_write_failed') { Throw-ApiError 'audit_log_write_failed_after_action_manual_review_required' }
+                    throw
+                }
+                if ($actionError.Exception.Message -eq 'audit_log_write_failed') { Throw-ApiError 'audit_log_write_failed_after_action_manual_review_required' }
+                throw $actionError
+            }
+            $finished = New-Map; $finished['deviceId'] = $id; $finished['referenceId'] = $referenceId; $finished['outcome'] = 'allowed'
+            try { Write-Event $Logger 'exchange_action_finished' -Metadata $finished }
+            catch [SotiApiException] {
+                if ($_.Exception.Message -eq 'audit_log_write_failed') { Throw-ApiError 'audit_log_write_failed_after_action_manual_review_required' }
+                throw
+            }
             $outcome = 'allowed'
         }
         else { Throw-ContractError ("device_no_longer_eligible:{0}" -f $current['reason']) }

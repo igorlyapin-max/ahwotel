@@ -69,8 +69,12 @@ stdout/stderr only. An empty string or malformed URL is rejected.
 for `apply`. Set it to a private local JSONL file outside Git, for example
 `/secure/soti-exchange-audit.jsonl` or
 `C:\secure\soti-exchange-audit.jsonl`. The tool durably writes an event before
-and after every Exchange action. A failed local write blocks the next action;
-OTLP remains an optional additional sink.
+and an `exchange_action_finished` event after every attempted Exchange action.
+The final outcome distinguishes `allowed`, `verification_timeout`,
+`unexpected_state`, `ambiguous`, `reread_failed` and `action_failed`. A failed
+local write before the POST blocks the action; a failed final audit write returns
+`audit_log_write_failed_after_action_manual_review_required`. OTLP remains an
+optional additional sink.
 
 `apply` is blocked while `actionContractVerified` is `false`. Unknown collection
 shapes and paginated responses are rejected. For a tenant that paginates
@@ -203,7 +207,9 @@ the operator record for a specific run.
 
 If an action request has an ambiguous transport failure, the tool re-reads the
 device once and never blindly repeats the POST. A still-quarantined result is a
-manual-review failure.
+manual-review failure. Verification timeout, an unexpected state or a failed
+post-error reread are also closed by a durable final audit event and require
+operator review; the script never reports them as a completed allow operation.
 
 Run the focused PowerShell checks with:
 

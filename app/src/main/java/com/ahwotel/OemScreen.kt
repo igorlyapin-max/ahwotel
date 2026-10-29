@@ -3,8 +3,6 @@ package com.ahwotel
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -84,22 +82,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val range = window.range
     val end = if(showHistory && window.atLatest) revision?.capturedAt ?: window.end else window.end
     val from = end-window.range
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var exporting by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<Int?>(null) }
-    var pendingExport by rememberSaveable { mutableStateOf<String?>(null) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val savedRequest = pendingExport; pendingExport = null
-        if (uri != null) scope.launch {
-            exporting = true
-            try {
-                withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { OemExporter.history(app, it, PendingExport.decode(requireNotNull(savedRequest)).spec) } ?: error("no_output") }
-                message = R.string.export_done
-            } catch (_: Exception) { message = R.string.export_failed }
-            finally { exporting = false }
-        }
-    }
     val periodRequest=OemPeriodRequest(from,end,session,showHistory,revision?.oemThroughId ?: 0,
         revision?.oemInventoryThroughId ?: 0,revision?.oemEventThroughId ?: 0,graph)
     var periodRetry by remember(showHistory,session) { mutableIntStateOf(0) }
@@ -221,10 +204,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                 }
             HistoryRefreshControls(refresh,periodSnapshot?.completedAt,periodLoad.loading)
             Text("${formatTime(displayFrom)} — ${formatTime(displayEnd)}", style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.oem_export_hint), style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(displaySession, displayFrom, displayEnd, true)).encode(); export.launch("ahwotel-oem.json") }) { Text(stringResource(R.string.oem_full_json)) }
-            OutlinedButton(enabled = !exporting, onClick = { pendingExport = PendingExport("oem", ExportSpec(displaySession, displayFrom, displayEnd, false)).encode(); export.launch("ahwotel-oem.csv") }) { Text(stringResource(R.string.oem_numeric_csv)) }
-            message?.let { Text(stringResource(it)) }
+            Text(stringResource(R.string.export_from_history), style = MaterialTheme.typography.bodySmall)
             }
         } }
         if (mode == "values") {

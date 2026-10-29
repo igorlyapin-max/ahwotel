@@ -569,6 +569,31 @@ def wait_for_allowed(client: Any, config: dict[str, Any], device_id: str, refere
         time.sleep(config["verifyPollSeconds"])
 
 
+def emit_action_finished(logger: EventLogger, device_id: str, reference_id: str, outcome: str, *, error: bool = False) -> None:
+    try:
+        logger.emit(
+            "exchange_action_finished", severity="ERROR" if error else "INFO",
+            deviceId=device_id, referenceId=reference_id, outcome=outcome,
+        )
+    except ApiError as audit_error:
+        if str(audit_error) == "audit_log_write_failed":
+            raise ApiError("audit_log_write_failed_after_action_manual_review_required") from audit_error
+        raise
+
+
+def action_failure_outcome(error: Exception) -> str:
+    message = str(error)
+    if message == "exchange_access_verification_timeout":
+        return "verification_timeout"
+    if message in {"unexpected_state_after_action", "reference_id_changed_after_action"}:
+        return "unexpected_state"
+    if message == "exchange_action_ambiguous_manual_review_required":
+        return "ambiguous"
+    if message == "exchange_action_reread_failed_manual_review_required":
+        return "reread_failed"
+    return "action_failed"
+
+
 def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, approvals: list[dict[str, str]]) -> dict[str, Any]:
     if not config["actionContractVerified"]:
         raise ContractError("action_contract_not_verified")
@@ -592,13 +617,21 @@ def apply_approvals(client: Any, config: dict[str, Any], logger: EventLogger, ap
                 raise ContractError("approved_reference_id_changed")
             logger.emit("exchange_action_started", deviceId=device_id, referenceId=reference_id)
             try:
-                client.allow_exchange(device_id, reference_id)
-            except ApiError:
-                reread = evaluate_device(client.get_device(device_id), config)
-                if reread["decision"] != "noop":
-                    logger.emit("exchange_action_ambiguous", severity="ERROR", deviceId=device_id)
-                    raise ApiError("exchange_action_ambiguous_manual_review_required")
-            wait_for_allowed(client, config, device_id, reference_id)
+                try:
+                    client.allow_exchange(device_id, reference_id)
+                except ApiError:
+                    try:
+                        reread = evaluate_device(client.get_device(device_id), config)
+                    except (ApiError, ContractError) as reread_error:
+                        raise ApiError("exchange_action_reread_failed_manual_review_required") from reread_error
+                    if reread["decision"] != "noop":
+                        logger.emit("exchange_action_ambiguous", severity="ERROR", deviceId=device_id)
+                        raise ApiError("exchange_action_ambiguous_manual_review_required")
+                wait_for_allowed(client, config, device_id, reference_id)
+            except (ApiError, ContractError) as action_error:
+                emit_action_finished(logger, device_id, reference_id, action_failure_outcome(action_error), error=True)
+                raise
+            emit_action_finished(logger, device_id, reference_id, "allowed")
             outcome = "allowed"
         else:
             raise ContractError(f"device_no_longer_eligible:{current['reason']}")

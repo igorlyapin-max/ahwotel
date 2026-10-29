@@ -61,8 +61,12 @@ data class OemEventRow(@PrimaryKey(autoGenerate = true) val id: Long = 0, val se
     @Query("SELECT * FROM oem_profiles") suspend fun profiles(): List<OemProfileRow>
     @Query("SELECT * FROM oem_observations WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 500")
     suspend fun page(after: Long, from: Long, to: Long, session: String?): List<OemObservationRow>
+    @Query("SELECT * FROM oem_observations WHERE id>:after AND id<=:throughId AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 500")
+    suspend fun pageThrough(after: Long, throughId: Long, from: Long, to: Long, session: String?): List<OemObservationRow>
     @Query("SELECT * FROM oem_inventory WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 20") suspend fun inventoryPage(after: Long, from: Long, to: Long, session: String?): List<OemInventoryRow>
+    @Query("SELECT * FROM oem_inventory WHERE id>:after AND id<=:throughId AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 20") suspend fun inventoryPageThrough(after: Long, throughId: Long, from: Long, to: Long, session: String?): List<OemInventoryRow>
     @Query("SELECT * FROM oem_events WHERE id>:after AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 500") suspend fun eventPage(after: Long, from: Long, to: Long, session: String?): List<OemEventRow>
+    @Query("SELECT * FROM oem_events WHERE id>:after AND id<=:throughId AND time BETWEEN :from AND :to AND (:session IS NULL OR sessionId=:session) ORDER BY id LIMIT 500") suspend fun eventPageThrough(after: Long, throughId: Long, from: Long, to: Long, session: String?): List<OemEventRow>
     @Query("DELETE FROM oem_observations WHERE time<:cutoff") suspend fun expireObservations(cutoff: Long): Int
     @Query("DELETE FROM oem_inventory WHERE time<:cutoff") suspend fun expireInventory(cutoff: Long): Int
     @Query("DELETE FROM oem_events WHERE time<:cutoff") suspend fun expireEvents(cutoff: Long): Int

@@ -253,7 +253,7 @@ private data class AgentRangeData(val presence: List<MetricPresence>,val latest:
                 86_400_000L to stringResource(R.string.day),604_800_000L to stringResource(R.string.week),
                 1_209_600_000L to stringResource(R.string.two_weeks))) {window.range=it}
         }
-        item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        if(!history) item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(displayedRequest.session,displayedRequest.end-displayedRequest.range,displayedRequest.end,true)).encode();export.launch(if(battery) "battery.json" else "self-telemetry.json")}) {Text(stringResource(R.string.export_json))}
             OutlinedButton({pendingExport=PendingExport(if(battery) "battery" else "self",ExportSpec(displayedRequest.session,displayedRequest.end-displayedRequest.range,displayedRequest.end,false)).encode();export.launch(if(battery) "battery.csv" else "self-telemetry.csv")}) {Text(stringResource(R.string.export_csv))}
         };exportMessage?.let { Text(stringResource(it)) } }

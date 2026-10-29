@@ -83,6 +83,17 @@ class AmbiguousClient(FakeClient):
         raise access.ApiError("soti_transport_error")
 
 
+class TimeoutClient(FakeClient):
+    def allow_exchange(self, device_id, reference_id):
+        self.actions.append((device_id, reference_id))
+
+
+class UnexpectedStateClient(FakeClient):
+    def allow_exchange(self, device_id, reference_id):
+        self.actions.append((device_id, reference_id))
+        self.devices[device_id]["ExchangeOnlineEmailAccess"][0]["Status"] = "Blocked"
+
+
 class SotiExchangeAccessTest(unittest.TestCase):
     def test_windows_powershell_51_source_uses_framework_compatible_contract(self):
         scripts_dir = Path(__file__).parent
@@ -219,6 +230,22 @@ class SotiExchangeAccessTest(unittest.TestCase):
         second = access.apply_approvals(client, cfg, logger, approval)
         self.assertEqual(1, len(client.actions))
         self.assertEqual("already_allowed", second["results"][0]["outcome"])
+        finished = [metadata for event, metadata in logger.events if event == "exchange_action_finished"]
+        self.assertEqual("allowed", finished[0]["outcome"])
+
+    def test_post_action_timeout_and_unexpected_state_are_durably_finished(self):
+        approval = [{"deviceId": "d-1", "referenceId": "exchange-main"}]
+        timeout_logger = Logger()
+        with patch.object(access.time, "monotonic", side_effect=[0.0, 2.0]), \
+                patch.object(access.time, "sleep"):
+            with self.assertRaisesRegex(access.ApiError, "verification_timeout"):
+                access.apply_approvals(TimeoutClient([device()]), config(), timeout_logger, approval)
+        self.assertEqual("verification_timeout", [m for e,m in timeout_logger.events if e == "exchange_action_finished"][0]["outcome"])
+
+        state_logger = Logger()
+        with self.assertRaisesRegex(access.ContractError, "unexpected_state"):
+            access.apply_approvals(UnexpectedStateClient([device()]), config(), state_logger, approval)
+        self.assertEqual("unexpected_state", [m for e,m in state_logger.events if e == "exchange_action_finished"][0]["outcome"])
 
     def test_apply_fails_closed_when_device_changed(self):
         client = FakeClient([device(group="/Personal")])
@@ -269,7 +296,8 @@ class SotiExchangeAccessTest(unittest.TestCase):
             self.assertEqual([("d-1", "exchange-main")], client.actions)
             self.assertIn('"auditSink":"stdout+file"', output.getvalue())
             content = audit.read_text(encoding="utf-8")
-            self.assertLess(content.index('"event":"exchange_action_started"'), content.index('"event":"exchange_access_result"'))
+            self.assertLess(content.index('"event":"exchange_action_started"'), content.index('"event":"exchange_action_finished"'))
+            self.assertLess(content.index('"event":"exchange_action_finished"'), content.index('"event":"exchange_access_result"'))
             self.assertNotIn("d-1", content)
             self.assertNotIn("exchange-main", content)
         with tempfile.TemporaryDirectory() as directory:

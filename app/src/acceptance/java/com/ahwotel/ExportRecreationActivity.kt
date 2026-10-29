@@ -24,6 +24,7 @@ class ExportRecreationActivity: ComponentActivity() {
                     when(intent.getStringExtra("kind")) {
                         "oem" -> OemScreen(app) { }
                         "self" -> AgentTelemetryScreen(app,false) { }
+                        "history" -> HistoryScreen(app)
                         else -> AgentTelemetryScreen(app,true) { }
                     }
                 }

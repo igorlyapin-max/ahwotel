@@ -2,7 +2,7 @@
 <resources>
     <string name="oem_scope_compare">Android: %1$s; Knox: %2$s. Смотрите провайдер конкретного замера</string>
     <string name="oem_details">Подробнее о доступности</string>
-    <string name="oem_period_export">Период и экспорт</string>
+    <string name="oem_period_export">Период</string>
     <string name="oem_refresh">Обновить период</string>
     <string name="oem_title">Расширенная телеметрия / OEM</string>
     <string name="oem_enabled">Собирать расширенную телеметрию</string>

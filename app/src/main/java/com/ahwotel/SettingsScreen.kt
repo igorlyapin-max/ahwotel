@@ -101,6 +101,10 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
                 }
             }
         } }
+        item { Panel(stringResource(R.string.methodology_title)) {
+            Text(stringResource(R.string.methodology_settings_hint), style = MaterialTheme.typography.bodySmall)
+            HelpTopicLink(HelpTopic.METHODOLOGY)
+        } }
         item { Panel(stringResource(R.string.deployment_profile)) {
             Text(stringResource(R.string.deployment_profile_hint), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.profile_id), profileName) { profileName = it.trim() }

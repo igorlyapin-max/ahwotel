@@ -22,7 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 
 enum class HelpContext { GENERAL, HISTORY, DIAGNOSTICS }
-enum class HelpTopic { SCREEN_OFF }
+enum class HelpTopic { SCREEN_OFF, METHODOLOGY }
 data class MetricObservationContext(
     val observedAt: Long? = null,
     val status: String = "WARMING_UP",
@@ -88,6 +88,13 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
     HelpIcon(stringResource(R.string.help_about, title), "help-topic-${topic.name}") { open(HelpPage(topic = topic)) }
 }
 
+@Composable fun HelpTopicLink(topic: HelpTopic) {
+    val open = LocalHelp.current
+    OutlinedButton({ open(HelpPage(topic = topic)) }, Modifier.fillMaxWidth().testTag("help-topic-link-${topic.name}")) {
+        Text(stringResource(R.string.methodology_open))
+    }
+}
+
 @Composable fun MetricGuideButton() {
     val open = LocalHelp.current
     OutlinedButton(onClick = { open(HelpPage(group = HelpGroup.ALL)) }) { Text(stringResource(R.string.help_guide)) }
@@ -100,6 +107,7 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
 
 @Composable private fun helpTopicTitle(topic: HelpTopic): String = when(topic) {
     HelpTopic.SCREEN_OFF -> stringResource(R.string.screen_off)
+    HelpTopic.METHODOLOGY -> stringResource(R.string.methodology_title)
 }
 
 @Composable private fun helpGroupTitle(group: HelpGroup): String = when (group) {
@@ -146,8 +154,13 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
             if (page.topic != null) {
                 LazyColumn(Modifier.weight(1f).testTag("help-content"), contentPadding = PaddingValues(20.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    item { Text(stringResource(R.string.screen_off_hint)) }
-                    item { Text(stringResource(R.string.background_collection_hint)) }
+                    when (page.topic) {
+                        HelpTopic.SCREEN_OFF -> {
+                            item { Text(stringResource(R.string.screen_off_hint)) }
+                            item { Text(stringResource(R.string.background_collection_hint)) }
+                        }
+                        HelpTopic.METHODOLOGY -> methodologyItems()
+                    }
                 }
             } else if (metric == null) {
                 LazyColumn(Modifier.weight(1f).testTag("help-list"), state = groupList, contentPadding = PaddingValues(16.dp)) {

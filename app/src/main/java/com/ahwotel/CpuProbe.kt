@@ -28,7 +28,8 @@ data class ProbeReading(val sequence: Long, val time: Long, val elapsed: Long, v
     val waitMs: Double?, val delayMs: Double?, val tid: Int, val sources: List<SourceResult>)
 
 /** A stable, ordinary-priority TID. No database, exporter or logging work runs here. */
-class CpuProbe(private val intervalMs: Long, reader: ProcReader = AndroidProcReader) : AutoCloseable {
+class CpuProbe(private val intervalMs: Long, reader: ProcReader = AndroidProcReader,
+    private val mayRead: () -> Boolean = { true }) : AutoCloseable {
     private val thread = HandlerThread("ahwotel-cpu-probe", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
     private val handler = Handler(thread.looper)
     private val access = ProcAccess(reader)
@@ -71,6 +72,12 @@ class CpuProbe(private val intervalMs: Long, reader: ProcReader = AndroidProcRea
     private val tick = object : Runnable {
         override fun run() {
             if (closed || paused) return
+            if (!mayRead()) {
+                baseline()
+                due = SystemClock.uptimeMillis() + intervalMs
+                handler.postDelayed(this, intervalMs)
+                return
+            }
             val up = SystemClock.uptimeMillis()
             val elapsed = SystemClock.elapsedRealtime()
             val wall = System.currentTimeMillis()

@@ -70,13 +70,10 @@ class OemContractsTest {
                 KnoxCall.INSTALL -> 1; KnoxCall.CAMERA -> throw SecurityException(); KnoxCall.PACKAGES -> null; else -> true
             }
         })
-        val rows = provider.collect(OemCategory.POLICY).observations
-        assertEquals("ALLOWED", rows.single { it.metric == OemMetric.INSTALLATION_POLICY }.text)
-        assertNull(rows.single { it.metric == OemMetric.CAMERA_POLICY }.number)
-        assertEquals(ProviderState.DEGRADED, providerState(rows.map { it.status }))
+        assertTrue(provider.collect(OemCategory.POLICY).observations.isEmpty())
         assertEquals("3.2", provider.collect(OemCategory.DEVICE).observations.single { it.metric == OemMetric.KNOX_VERSION }.text)
         assertTrue(provider.collect(OemCategory.RESOURCES).observations.all { it.status == OemStatus.UNSUPPORTED && it.number == null })
-        assertEquals(OemStatus.UNAVAILABLE, provider.collect(OemCategory.INVENTORY).observations.single().status)
+        assertTrue(provider.collect(OemCategory.INVENTORY).observations.isEmpty())
     }
     @Test fun noKnoxLibraryDoesNotPreventAndroidCollection() {
         val knox = SamsungKnoxProvider(context, object : KnoxBridge {

@@ -24,6 +24,8 @@ class Collectors(private val context: Context, private val settings: Settings,
         val capabilities = mutableMapOf<String, Availability>()
         val reasons = mutableMapOf<String, SourceReason>()
         fun run(kind: CollectorKind, action: () -> Unit) {
+            val app = context.applicationContext as? MonitorApp
+            if (app != null && collectionPaused(context, app.settings.value)) return
             if(kind==CollectorKind.BATTERY && separateBattery) return
             if (kind !in settings.enabled) { capabilities[kind.name] = Availability.DISABLED; return }
             val began = SystemClock.elapsedRealtime()

@@ -90,7 +90,7 @@ A practical primary event can be `performance.state >= 2` (`Degraded` or `Critic
 
 ### Thermal
 
-- `performance.pressure.thermal >= 2`, sustained `device.thermal.status` or decreasing `device.thermal.headroom` can define a thermal-capacity event. With defaults, thermal status 2 starts a degraded candidate.
+- `performance.pressure.thermal >= 2`, sustained `device.thermal.status` or increasing `device.thermal.headroom` toward the 1.0 severe-throttling reference can define a thermal-capacity event. With defaults, thermal status 2 starts a degraded candidate.
 - Battery temperature is useful context but is not CPU temperature and does not by itself prove CPU throttling.
 
 ### Battery and agent overhead

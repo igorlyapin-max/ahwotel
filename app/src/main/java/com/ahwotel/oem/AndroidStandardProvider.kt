@@ -37,7 +37,6 @@ class AndroidStandardProvider(private val context: Context) : OemTelemetryProvid
             catch (_: UnsupportedOperationException) { missing(m) }
             catch (_: Exception) { missing(m, OemReason.READ_FAILED, OemStatus.ERROR) }
         }
-        var inventory: InventorySnapshot? = null
         when (category) {
             OemCategory.DEVICE -> {
                 read(OemMetric.MANUFACTURER) { Build.MANUFACTURER }; read(OemMetric.MODEL) { Build.MODEL }
@@ -45,7 +44,6 @@ class AndroidStandardProvider(private val context: Context) : OemTelemetryProvid
                 read(OemMetric.FIRMWARE) { Build.VERSION.INCREMENTAL }; read(OemMetric.BUILD) { Build.DISPLAY }
                 read(OemMetric.SECURITY_PATCH) { Build.VERSION.SECURITY_PATCH }; read(OemMetric.ANDROID_VERSION) { Build.VERSION.RELEASE }
                 read(OemMetric.ANDROID_SDK) { Build.VERSION.SDK_INT }
-                read(OemMetric.SERIAL_AVAILABLE) { canReadSerial() }
                 val dpm = context.getSystemService(DevicePolicyManager::class.java)
                 val owner = when { dpm.isDeviceOwnerApp(context.packageName) -> "DEVICE_OWNER"; dpm.isProfileOwnerApp(context.packageName) -> "PROFILE_OWNER"; else -> "NONE" }
                 read(OemMetric.AGENT_OWNER, OemSource.ANDROID_ENTERPRISE) { owner }
@@ -57,32 +55,7 @@ class AndroidStandardProvider(private val context: Context) : OemTelemetryProvid
                     catch (_: PackageManager.NameNotFoundException) { false }
                 }
             }
-            OemCategory.SECURITY -> {
-                read(OemMetric.DEVELOPER_MODE) { Settings.Global.getInt(context.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED) != 0 }
-                read(OemMetric.USB_DEBUGGING) { Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED) != 0 }
-                read(OemMetric.SCREEN_LOCK) { context.getSystemService(KeyguardManager::class.java).isDeviceSecure }
-                read(OemMetric.ENCRYPTION, OemSource.ANDROID_ENTERPRISE) {
-                    when (context.getSystemService(DevicePolicyManager::class.java).storageEncryptionStatus) {
-                        0 -> "UNSUPPORTED"; 1 -> "INACTIVE"; 2 -> "ACTIVATING"; 3 -> "ACTIVE"; 4 -> "ACTIVE_DEFAULT_KEY"; 5 -> "ACTIVE_PER_USER"; else -> null
-                    }
-                }
-                missing(OemMetric.COMPLIANCE, OemReason.NOT_CHECKED, OemStatus.UNAVAILABLE)
-                missing(OemMetric.INTEGRITY)
-            }
-            OemCategory.INVENTORY -> {
-                val complete = Build.VERSION.SDK_INT < 30 || context.checkSelfPermission("android.permission.QUERY_ALL_PACKAGES") == PackageManager.PERMISSION_GRANTED
-                try {
-                    val entries = context.packageManager.getInstalledPackages(0).map { p ->
-                        InventoryEntry(p.packageName, p.versionName?.take(128), if (Build.VERSION.SDK_INT >= 28) p.longVersionCode else p.versionCode.toLong(),
-                            p.applicationInfo?.enabled, p.applicationInfo?.let { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 })
-                    }.sortedBy { it.packageName }
-                    inventory = InventorySnapshot(id, entries, complete)
-                    val quality = if (complete) Quality.AUTHORITATIVE else Quality.INCOMPLETE
-                    read(OemMetric.PACKAGE_COUNT, quality = quality) { entries.size }
-                    read(OemMetric.SYSTEM_PACKAGE_COUNT, quality = quality) { entries.count { it.system == true } }
-                    missing(OemMetric.MANAGED_PACKAGE_COUNT, OemReason.ROLE_REQUIRED, OemStatus.UNAVAILABLE)
-                } catch (_: SecurityException) { OemMetric.entries.filter { it.category == category }.forEach { missing(it, OemReason.PERMISSION, OemStatus.PERMISSION_DENIED) } }
-            }
+            OemCategory.SECURITY, OemCategory.INVENTORY -> return ProviderBatch(emptyList())
             OemCategory.NETWORK -> {
                 val cm = context.getSystemService(ConnectivityManager::class.java)
                 val active = cm.activeNetwork?.let(cm::getNetworkCapabilities)
@@ -132,40 +105,10 @@ class AndroidStandardProvider(private val context: Context) : OemTelemetryProvid
                 read(OemMetric.JAVA_HEAP) { Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } }
                 read(OemMetric.NATIVE_HEAP) { Debug.getNativeHeapAllocatedSize() }
             }
-            OemCategory.POLICY -> {
-                val users = context.getSystemService(UserManager::class.java)
-                read(OemMetric.CAMERA_POLICY, OemSource.ANDROID_ENTERPRISE) {
-                    if (context.getSystemService(DevicePolicyManager::class.java).getCameraDisabled(null)) "RESTRICTED" else "ALLOWED"
-                }
-                mapOf(OemMetric.USB_POLICY to UserManager.DISALLOW_USB_FILE_TRANSFER,
-                    OemMetric.DEBUGGING_POLICY to UserManager.DISALLOW_DEBUGGING_FEATURES,
-                    OemMetric.BLUETOOTH_POLICY to UserManager.DISALLOW_BLUETOOTH,
-                    OemMetric.WIFI_POLICY to UserManager.DISALLOW_CONFIG_WIFI,
-                    OemMetric.INSTALLATION_POLICY to UserManager.DISALLOW_INSTALL_APPS,
-                    OemMetric.FACTORY_RESET_POLICY to UserManager.DISALLOW_FACTORY_RESET,
-                    OemMetric.VPN_POLICY to UserManager.DISALLOW_CONFIG_VPN).forEach { (metric, restriction) ->
-                    read(metric, OemSource.ANDROID_ENTERPRISE) { if (users.hasUserRestriction(restriction)) "RESTRICTED" else "ALLOWED" }
-                }
-                val dpm = context.getSystemService(DevicePolicyManager::class.java)
-                val admin = if (dpm.isDeviceOwnerApp(context.packageName) || dpm.isProfileOwnerApp(context.packageName))
-                    dpm.activeAdmins?.firstOrNull { it.packageName == context.packageName } else null
-                if (admin == null) {
-                    missing(OemMetric.SCREEN_LOCK_POLICY, OemReason.ROLE_REQUIRED, OemStatus.UNAVAILABLE)
-                    missing(OemMetric.PASSWORD_POLICY, OemReason.ROLE_REQUIRED, OemStatus.UNAVAILABLE)
-                } else {
-                    read(OemMetric.SCREEN_LOCK_POLICY, OemSource.ANDROID_ENTERPRISE) { if (dpm.getMaximumTimeToLock(admin) > 0) "REQUIRED" else "NO_REQUIREMENT" }
-                    read(OemMetric.PASSWORD_POLICY, OemSource.ANDROID_ENTERPRISE) { if (dpm.getPasswordQuality(admin) != 0) "REQUIRED" else "NO_REQUIREMENT" }
-                }
-                read(OemMetric.EXTERNAL_STORAGE) { Environment.getExternalStorageState() }
-            }
+            OemCategory.POLICY -> return ProviderBatch(emptyList())
         }
-        return ProviderBatch(rows, inventory)
+        return ProviderBatch(rows.filter { it.metric.active })
     }
-
-    // Deliberate capability probe: the read wrapper catches SecurityException and records denial.
-    // No privileged permission is requested and the serial value never leaves this method.
-    @android.annotation.SuppressLint("MissingPermission")
-    private fun canReadSerial() = Build.getSerial().let { it.isNotBlank() && it != Build.UNKNOWN }
 
     private fun scope(m: OemMetric) = standardScope(m)
 }

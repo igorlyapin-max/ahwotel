@@ -22,7 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 
 enum class HelpContext { GENERAL, HISTORY, DIAGNOSTICS }
-enum class HelpTopic { SCREEN_OFF, METHODOLOGY }
+enum class HelpTopic { SCREEN_OFF, LOCKED, METHODOLOGY }
 data class MetricObservationContext(
     val observedAt: Long? = null,
     val status: String = "WARMING_UP",
@@ -107,6 +107,7 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
 
 @Composable private fun helpTopicTitle(topic: HelpTopic): String = when(topic) {
     HelpTopic.SCREEN_OFF -> stringResource(R.string.screen_off)
+    HelpTopic.LOCKED -> stringResource(R.string.pause_locked)
     HelpTopic.METHODOLOGY -> stringResource(R.string.methodology_title)
 }
 
@@ -159,6 +160,7 @@ private val LocalHelp = compositionLocalOf<(HelpPage) -> Unit> { error("metric_h
                             item { Text(stringResource(R.string.screen_off_hint)) }
                             item { Text(stringResource(R.string.background_collection_hint)) }
                         }
+                        HelpTopic.LOCKED -> item { Text(stringResource(R.string.pause_locked_help)) }
                         HelpTopic.METHODOLOGY -> methodologyItems()
                     }
                 }

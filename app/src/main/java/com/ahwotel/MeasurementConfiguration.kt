@@ -17,7 +17,7 @@ object MeasurementConfiguration {
             .put("collectors", start.enabled.filter { it != CollectorKind.BATTERY }.sortedBy { it.name }.joinToString())
             .put("indirectCpu", CollectorKind.CPU in start.enabled && start.indirectCpu)
             .put("thresholds", JSONObject(SettingsCodec.encode(start)).getJSONObject("thresholds"))
-            .put("screenOff", live.collectScreenOff)
+            .put("screenOff", live.collectScreenOff).put("pauseWhenLocked", live.pauseWhenLocked)
             .put("battery", ExtraSettingsCodec.battery(live.batterySettings)).put("self", self)
             .put("oem", JSONObject().put("enabled", live.oem.enabled).put("knox", live.oem.knox)
                 .put("categories", categories.joinToString()).put("intervals", JSONObject().apply {

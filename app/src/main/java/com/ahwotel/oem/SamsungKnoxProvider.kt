@@ -31,6 +31,7 @@ class PublicKnoxBridge(private val context: Context) : KnoxBridge {
     private fun sdk() = Class.forName("com.samsung.android.knox.EnterpriseDeviceManager", false, context.classLoader)
     override fun apiLevel() = sdk().getMethod("getAPILevel").invoke(null) as Int
     override fun call(call: KnoxCall): Any? {
+        require(call.metric.active) { "retired_telemetry_api" }
         val manager = sdk().getMethod("getInstance", Context::class.java).invoke(null, context) ?: return null
         val accessor = sdk().getMethod(call.accessor)
         val policy = accessor.invoke(manager) ?: return null
@@ -50,7 +51,8 @@ class SamsungKnoxProvider(private val context: Context, private val bridge: Knox
     @Volatile var license = "UNKNOWN"
         private set
     override fun collect(category: OemCategory): ProviderBatch {
-        val calls = KnoxCall.entries.filter { it.metric.category == category }
+        if (!category.active) return ProviderBatch(emptyList())
+        val calls = emptyList<KnoxCall>()
         val metrics = (calls.map { it.metric } + when(category) {
             OemCategory.DEVICE -> listOf(OemMetric.KNOX_API, OemMetric.KNOX_VERSION)
             OemCategory.SECURITY -> listOf(OemMetric.INTEGRITY)
@@ -66,7 +68,6 @@ class SamsungKnoxProvider(private val context: Context, private val bridge: Knox
         }
         if (api < 24) return ProviderBatch(metrics.map { failure(it, OemStatus.UNSUPPORTED, OemReason.API_LEVEL) })
         val rows = mutableListOf<OemObservation>()
-        var inventory: InventorySnapshot? = null
         if (category == OemCategory.DEVICE) {
             license = bridge.licenseState()
             rows += OemObservation(OemMetric.KNOX_API, id, OemSource.OEM, OemScope.DEVICE, number = api.toDouble())
@@ -75,43 +76,8 @@ class SamsungKnoxProvider(private val context: Context, private val bridge: Knox
             rows += if (version == null) failure(OemMetric.KNOX_VERSION, OemStatus.UNAVAILABLE, OemReason.API_LEVEL)
                 else OemObservation(OemMetric.KNOX_VERSION, id, OemSource.OEM, OemScope.DEVICE, text = version, quality = Quality.DERIVED)
         }
-        for (call in calls) {
-            if (api < call.minimumApi) { rows += failure(call.metric, OemStatus.UNSUPPORTED, OemReason.API_LEVEL); continue }
-            try {
-                val value = bridge.call(call)
-                if (call == KnoxCall.PACKAGES) {
-                    val names = (value as? Array<*>)?.filterIsInstance<String>()
-                    if (names == null) { rows += failure(call.metric, OemStatus.UNAVAILABLE, OemReason.MISSING_VALUE); continue }
-                    val entries = names.distinct().sorted().map { name ->
-                        try {
-                            val info = context.packageManager.getPackageInfo(name, 0)
-                            InventoryEntry(name, info.versionName?.take(128), if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong(),
-                                info.applicationInfo?.enabled, info.applicationInfo?.let { it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0 })
-                        } catch (_: PackageManager.NameNotFoundException) { InventoryEntry(name, null, null, null, null) }
-                    }
-                    inventory = InventorySnapshot(id, entries, true)
-                    rows += OemObservation(call.metric, id, OemSource.OEM, call.scope, number = entries.size.toDouble())
-                    continue
-                }
-                val text = when {
-                    call == KnoxCall.INSTALL && value is Number -> when(value.toInt()) { 0 -> "RESTRICTED"; 1 -> "ALLOWED"; else -> null }
-                    value is Boolean && call.metric.kind == ValueKind.STATE -> if (value) "ALLOWED" else "RESTRICTED"
-                    else -> null
-                }
-                rows += when {
-                    text != null -> OemObservation(call.metric, id, OemSource.OEM, call.scope, text = text)
-                    value is Boolean && call.metric.kind == ValueKind.BOOLEAN -> OemObservation(call.metric, id, OemSource.OEM, call.scope, number = if (value) 1.0 else 0.0)
-                    else -> failure(call.metric, OemStatus.UNAVAILABLE, OemReason.MISSING_VALUE)
-                }
-            } catch (e: Throwable) {
-                if (e is VirtualMachineError || e is ThreadDeath) throw e
-                val (status, reason) = classifyKnoxFailure(e)
-                // A denied permission is not proof that a license is missing or that the phone lacks Knox.
-                rows += failure(call.metric, status, reason)
-            }
-        }
         metrics.filter { m -> rows.none { it.metric == m } }.forEach { rows += failure(it, OemStatus.UNSUPPORTED, OemReason.NO_OFFICIAL_API) }
-        return ProviderBatch(rows, inventory)
+        return ProviderBatch(rows)
     }
 }
 

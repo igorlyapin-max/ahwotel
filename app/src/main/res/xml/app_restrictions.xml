@@ -9,8 +9,7 @@
     <restriction android:key="knox_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_knox" android:defaultValue="true" />
     <restriction android:key="sampling_profile" android:restrictionType="string" android:title="@string/oem_profile" android:defaultValue="balanced" />
     <restriction android:key="upload_interval" android:restrictionType="integer" android:title="@string/oem_upload_interval" android:defaultValue="0" />
-    <restriction android:key="application_inventory_enabled" android:restrictionType="bool" android:title="@string/oem_category_inventory" android:defaultValue="true" />
-    <restriction android:key="security_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_category_security" android:defaultValue="true" />
+    <restriction android:key="pause_when_locked" android:restrictionType="bool" android:title="@string/pause_locked" android:defaultValue="false" />
     <restriction android:key="network_telemetry_enabled" android:restrictionType="bool" android:title="@string/oem_category_network" android:defaultValue="true" />
     <restriction android:key="debug_mode" android:restrictionType="string" android:title="@string/debug_level" android:defaultValue="off" />
     <restriction android:key="backend_environment" android:restrictionType="string" android:title="@string/oem_environment" android:defaultValue="local" />

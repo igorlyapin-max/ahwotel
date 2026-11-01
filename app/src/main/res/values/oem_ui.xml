@@ -12,7 +12,7 @@
     <string name="oem_balanced">Balanced</string>
     <string name="oem_custom">Custom</string>
     <string name="oem_interval">%1$s: interval in seconds</string>
-    <string name="oem_interval_hint">Device and inventory: 3600–86400 s. Other groups: 15–86400 s. System change events refresh a group at most once per 15 s. Rates restart after a pause.</string>
+    <string name="oem_interval_hint">Device context: 3600–86400 s. Other groups: 15–86400 s. System change events refresh a group at most once per 15 s. Rates restart after a pause.</string>
     <string name="oem_upload_interval">Upload delay, seconds (0–86400)</string>
     <string name="oem_environment">Environment label (not a server address)</string>
     <string name="oem_monitoring_disabled">Monitoring is disabled by configuration.</string>

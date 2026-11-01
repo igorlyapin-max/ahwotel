@@ -72,7 +72,7 @@ object SettingsCodec {
         })
         put("language", s.language); put("intervalMs", s.intervalMs)
         put("durationSeconds", s.durationSeconds); put("maxDurationSeconds", s.maxDurationSeconds)
-        put("continuous", s.continuous); put("collectScreenOff", s.collectScreenOff)
+        put("continuous", s.continuous); put("collectScreenOff", s.collectScreenOff); put("pauseWhenLocked", s.pauseWhenLocked)
         put("resumeOnBoot", s.resumeOnBoot); put("resumeOnOpen", s.resumeOnOpen)
         put("indirectCpu", s.indirectCpu)
         put("enabled", JSONArray(s.enabled.map { it.name }))
@@ -90,7 +90,7 @@ object SettingsCodec {
         })
     }.toString()
 
-    fun decode(json: String?): Settings {
+    fun decode(json: String?, validate: Boolean = true): Settings {
         if (json == null) return Settings()
         val o = JSONObject(json)
         val t = o.getJSONObject("thresholds")
@@ -101,12 +101,12 @@ object SettingsCodec {
             monitoringEnabled = o.optBoolean("monitoringEnabled", true), uploadIntervalSeconds = o.optInt("uploadIntervalSeconds", 0),
             backendEnvironment = o.optString("backendEnvironment", "local"),
             oem = o.optJSONObject("oem")?.let { e -> com.ahwotel.oem.OemSettings(e.getBoolean("enabled"), e.getBoolean("knox"),
-                e.getJSONArray("categories").let { a -> (0 until a.length()).map { com.ahwotel.oem.OemCategory.valueOf(a.getString(it)) }.toSet() },
-                e.getString("profile"), com.ahwotel.oem.OemCategory.entries.associateWith { e.getJSONObject("intervals").getInt(it.name) })
+                e.getJSONArray("categories").let { a -> (0 until a.length()).map { com.ahwotel.oem.OemCategory.valueOf(a.getString(it)) }.filter { it.active }.toSet() },
+                e.getString("profile"), com.ahwotel.oem.OemCategory.activeEntries.associateWith { e.getJSONObject("intervals").optInt(it.name, it.seconds) })
             } ?: com.ahwotel.oem.OemSettings(),
             language = o.getString("language"), intervalMs = o.getLong("intervalMs"),
             durationSeconds = o.getLong("durationSeconds"), maxDurationSeconds = o.getLong("maxDurationSeconds"),
-            continuous = o.getBoolean("continuous"), collectScreenOff = o.getBoolean("collectScreenOff"),
+            continuous = o.getBoolean("continuous"), collectScreenOff = o.getBoolean("collectScreenOff"), pauseWhenLocked = o.optBoolean("pauseWhenLocked", false),
             resumeOnBoot = o.optBoolean("resumeOnBoot", false), resumeOnOpen = o.optBoolean("resumeOnOpen", false),
             indirectCpu = o.optBoolean("indirectCpu", true),
             enabled = o.getJSONArray("enabled").let { a -> (0 until a.length()).map { CollectorKind.valueOf(a.getString(it)) }.toSet() },
@@ -118,6 +118,6 @@ object SettingsCodec {
             diagnostic = DiagnosticLevel.valueOf(o.getString("diagnostic")), verboseUntil = o.getLong("verboseUntil"),
             fileLogging = o.getBoolean("fileLogging"),
             thresholds = Thresholds(list("cpu"), list("memory"), list("storage"), list("thermal"), t.getInt("raiseSeconds"), t.getInt("recoverSeconds")),
-        ).also { require(it.valid()) { "invalid_stored_configuration" } }
+        ).also { if (validate) require(it.valid()) { "invalid_stored_configuration" } }
     }
 }

@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "profileId", "revision", "desiredState", "auth", "settings"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "profileId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
     "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
     "desiredState": { "enum": ["running", "stopped"] },
@@ -26,7 +26,7 @@
     "settings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["batterySettings", "selfTelemetry", "monitoringEnabled", "uploadIntervalSeconds", "backendEnvironment", "oem", "intervalMs", "durationSeconds", "maxDurationSeconds", "continuous", "collectScreenOff", "resumeOnBoot", "resumeOnOpen", "indirectCpu", "enabled", "retentionDays", "storageMiB", "otlpEnabled", "endpoint", "allowHttp", "queueHours", "queueMiB", "sotiEnabled", "diagnostic", "fileLogging", "thresholds"],
+      "required": ["batterySettings", "selfTelemetry", "monitoringEnabled", "uploadIntervalSeconds", "backendEnvironment", "oem", "intervalMs", "durationSeconds", "maxDurationSeconds", "continuous", "collectScreenOff", "pauseWhenLocked", "resumeOnBoot", "resumeOnOpen", "indirectCpu", "enabled", "retentionDays", "storageMiB", "otlpEnabled", "endpoint", "allowHttp", "queueHours", "queueMiB", "sotiEnabled", "diagnostic", "fileLogging", "thresholds"],
       "properties": {
         "monitoringEnabled": { "type": "boolean" },
         "uploadIntervalSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
@@ -36,6 +36,7 @@
         "maxDurationSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
         "continuous": { "type": "boolean" },
         "collectScreenOff": { "type": "boolean" },
+        "pauseWhenLocked": { "type": "boolean" },
         "resumeOnBoot": { "type": "boolean" },
         "resumeOnOpen": { "type": "boolean" },
         "indirectCpu": { "type": "boolean" },
@@ -86,15 +87,14 @@
           "properties": {
             "enabled": { "type": "boolean" }, "knox": { "type": "boolean" },
             "profile": { "enum": ["balanced", "custom"] },
-            "categories": { "type": "array", "uniqueItems": true, "items": { "enum": ["DEVICE", "SECURITY", "INVENTORY", "NETWORK", "BATTERY", "RESOURCES", "POLICY"] } },
+            "categories": { "type": "array", "uniqueItems": true, "items": { "enum": ["DEVICE", "NETWORK", "BATTERY", "RESOURCES"] } },
             "intervals": {
               "type": "object", "additionalProperties": false,
-              "required": ["DEVICE", "SECURITY", "INVENTORY", "NETWORK", "BATTERY", "RESOURCES", "POLICY"],
+              "required": ["DEVICE", "NETWORK", "BATTERY", "RESOURCES"],
               "properties": {
-                "DEVICE": { "type": "integer", "minimum": 3600, "maximum": 86400 }, "INVENTORY": { "type": "integer", "minimum": 3600, "maximum": 86400 },
-                "SECURITY": { "type": "integer", "minimum": 15, "maximum": 86400 }, "NETWORK": { "type": "integer", "minimum": 15, "maximum": 86400 },
-                "BATTERY": { "type": "integer", "minimum": 15, "maximum": 86400 }, "RESOURCES": { "type": "integer", "minimum": 15, "maximum": 86400 },
-                "POLICY": { "type": "integer", "minimum": 15, "maximum": 86400 }
+                "DEVICE": { "type": "integer", "minimum": 3600, "maximum": 86400 },
+                "NETWORK": { "type": "integer", "minimum": 15, "maximum": 86400 },
+                "BATTERY": { "type": "integer", "minimum": 15, "maximum": 86400 }, "RESOURCES": { "type": "integer", "minimum": 15, "maximum": 86400 }
               }
             }
           }

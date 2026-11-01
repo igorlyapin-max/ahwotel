@@ -15,13 +15,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 
 internal val LocalSettingsEditingEnabled = staticCompositionLocalOf { true }
+internal val SettingsDraftSaver = androidx.compose.runtime.saveable.Saver<Settings, String>(
+    save = { SettingsCodec.encode(it) },
+    restore = { SettingsCodec.decode(it, validate = false) },
+)
 internal enum class ProfileChangeSection { SAMPLING, RETENTION, BATTERY, SELF, OEM, THRESHOLDS, OTLP, SOTI, DIAGNOSTICS }
 
 internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings) = buildList {
     if (preview.monitoringEnabled != saved.monitoringEnabled || preview.intervalMs != saved.intervalMs ||
         preview.durationSeconds != saved.durationSeconds || preview.maxDurationSeconds != saved.maxDurationSeconds ||
         preview.continuous != saved.continuous || preview.resumeOnBoot != saved.resumeOnBoot ||
-        preview.resumeOnOpen != saved.resumeOnOpen || preview.collectScreenOff != saved.collectScreenOff ||
+        preview.resumeOnOpen != saved.resumeOnOpen || preview.collectScreenOff != saved.collectScreenOff || preview.pauseWhenLocked != saved.pauseWhenLocked ||
         preview.indirectCpu != saved.indirectCpu || preview.enabled != saved.enabled) add(ProfileChangeSection.SAMPLING)
     if (preview.retentionDays != saved.retentionDays || preview.storageMiB != saved.storageMiB) add(ProfileChangeSection.RETENTION)
     if (preview.batterySettings != saved.batterySettings) add(ProfileChangeSection.BATTERY)
@@ -44,20 +48,20 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
     val managedActive by app.managed.active.collectAsStateWithLifecycle()
     val managedProfileId by app.managed.profileId.collectAsStateWithLifecycle()
     val managedRevision by app.managed.revision.collectAsStateWithLifecycle()
-    var draft by remember(saved) { mutableStateOf(saved) }
-    var interval by remember(saved) { mutableStateOf(saved.intervalMs) }
-    var duration by remember(saved) { mutableStateOf(saved.durationSeconds.toString()) }
-    var maximum by remember(saved) { mutableStateOf(saved.maxDurationSeconds.toString()) }
-    var days by remember(saved) { mutableStateOf(saved.retentionDays.toString()) }
-    var size by remember(saved) { mutableStateOf(saved.storageMiB.toString()) }
-    var queueHours by remember(saved) { mutableStateOf(saved.queueHours.toString()) }
-    var queueSize by remember(saved) { mutableStateOf(saved.queueMiB.toString()) }
-    var cpu by remember(saved) { mutableStateOf(saved.thresholds.cpu.joinToString(",")) }
-    var memory by remember(saved) { mutableStateOf(saved.thresholds.memory.joinToString(",")) }
-    var storage by remember(saved) { mutableStateOf(saved.thresholds.storage.joinToString(",")) }
-    var thermal by remember(saved) { mutableStateOf(saved.thresholds.thermal.joinToString(",")) }
-    var raise by remember(saved) { mutableStateOf(saved.thresholds.raiseSeconds.toString()) }
-    var recover by remember(saved) { mutableStateOf(saved.thresholds.recoverSeconds.toString()) }
+    var draft by rememberSaveable(saved, stateSaver = SettingsDraftSaver) { mutableStateOf(saved) }
+    var interval by rememberSaveable(saved) { mutableStateOf(saved.intervalMs) }
+    var duration by rememberSaveable(saved) { mutableStateOf(saved.durationSeconds.toString()) }
+    var maximum by rememberSaveable(saved) { mutableStateOf(saved.maxDurationSeconds.toString()) }
+    var days by rememberSaveable(saved) { mutableStateOf(saved.retentionDays.toString()) }
+    var size by rememberSaveable(saved) { mutableStateOf(saved.storageMiB.toString()) }
+    var queueHours by rememberSaveable(saved) { mutableStateOf(saved.queueHours.toString()) }
+    var queueSize by rememberSaveable(saved) { mutableStateOf(saved.queueMiB.toString()) }
+    var cpu by rememberSaveable(saved) { mutableStateOf(saved.thresholds.cpu.joinToString(",")) }
+    var memory by rememberSaveable(saved) { mutableStateOf(saved.thresholds.memory.joinToString(",")) }
+    var storage by rememberSaveable(saved) { mutableStateOf(saved.thresholds.storage.joinToString(",")) }
+    var thermal by rememberSaveable(saved) { mutableStateOf(saved.thresholds.thermal.joinToString(",")) }
+    var raise by rememberSaveable(saved) { mutableStateOf(saved.thresholds.raiseSeconds.toString()) }
+    var recover by rememberSaveable(saved) { mutableStateOf(saved.thresholds.recoverSeconds.toString()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var profileName by rememberSaveable { mutableStateOf("ahwotel") }
@@ -81,7 +85,7 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
                     ?: error("no_input")
                 DeploymentProfileCodec.decode(raw)
                 pendingImport = raw
-            } catch (_: Exception) { message = "profile_import_failed" }
+            } catch (e: Exception) { message = if (e.message == "unsupported_profile_schema") "profile_schema_old" else "profile_import_failed" }
         }
     }
     CompositionLocalProvider(LocalSettingsEditingEnabled provides !managedActive) {
@@ -130,6 +134,8 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
             Text(stringResource(R.string.interval))
             Choice(interval, Settings.INTERVALS.map { it to stringResource(R.string.seconds, it / 1000) }) { interval = it }
             Toggle(stringResource(R.string.screen_off), draft.collectScreenOff) { draft = draft.copy(collectScreenOff = it) }
+            Toggle(stringResource(R.string.pause_locked), draft.pauseWhenLocked, helpTopic = HelpTopic.LOCKED,
+                enabled = "pause_when_locked" !in managedKeys) { draft = draft.copy(pauseWhenLocked = it) }
             Text(stringResource(R.string.screen_off_hint), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.wake_hint), style = MaterialTheme.typography.bodySmall)
             CollectorKind.entries.filter { it != CollectorKind.BATTERY }.forEach { kind ->
@@ -189,6 +195,7 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
                     "saved" -> stringResource(R.string.saved)
                     "profile_exported" -> stringResource(R.string.profile_exported)
                     "profile_imported" -> stringResource(R.string.profile_imported)
+                    "profile_schema_old" -> stringResource(R.string.profile_schema_old)
                     else -> errorText(it)
                 }
                 Text(text, color = if (success) Accent else MaterialTheme.colorScheme.error)

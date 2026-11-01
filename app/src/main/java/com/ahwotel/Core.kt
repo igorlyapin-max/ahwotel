@@ -38,6 +38,7 @@ data class Settings(
     val resumeOnBoot: Boolean = false,
     val resumeOnOpen: Boolean = false,
     val collectScreenOff: Boolean = true,
+    val pauseWhenLocked: Boolean = false,
     val indirectCpu: Boolean = true,
     val enabled: Set<CollectorKind> = CollectorKind.entries.toSet(),
     val retentionDays: Int = 14,

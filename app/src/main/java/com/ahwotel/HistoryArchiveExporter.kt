@@ -227,6 +227,9 @@ object HistoryArchiveExporter {
         }
     }
     private fun normalizedProfile(raw: String, presentation: ExportPresentation) = JSONObject(raw).apply {
+        optJSONObject("capabilities")?.let { caps ->
+            caps.keys().asSequence().toList().filter { key -> com.ahwotel.oem.OemCategory.entries.none { it.name == key && it.active } }.forEach(caps::remove)
+        }
         if (has("checkedAt") && !isNull("checkedAt")) {
             put("checkedAt_datetime", presentation.datetime(getLong("checkedAt"))); remove("checkedAt")
         }
@@ -243,6 +246,7 @@ object HistoryArchiveExporter {
                 val page = dao.pageThrough(after, spec.oemThroughId, spec.from, spec.to, spec.session); if (page.isEmpty()) break
                 for (row in page) {
                     after = row.id; val metric = OemMetric.valueOf(row.metric)
+                    if (!metric.active) continue
                     if (!spec.json && metric.kind !in setOf(ValueKind.NUMBER, ValueKind.BOOLEAN)) continue
                     providers += row.provider
                     if (session?.id != row.sessionId) session = app.db.dao().session(row.sessionId)
@@ -259,23 +263,6 @@ object HistoryArchiveExporter {
                 }
             }
             if (spec.json) {
-                writer.write("],\"inventory\":["); after = 0; first = true
-                while (true) {
-                    val page = dao.inventoryPageThrough(after, spec.oemInventoryThroughId, spec.from, spec.to, spec.session); if (page.isEmpty()) break
-                    page.forEach { row -> if (!first) writer.write(","); providers += row.provider
-                        writer.write(JSONObject().put("session.id", row.sessionId).put("datetime", presentation.datetime(row.time))
-                            .put("provider", row.provider).put("complete", row.complete).put("entries", JSONArray(row.payload)).toString())
-                        first = false; inventory++ }; after = page.last().id
-                }
-                writer.write("],\"events\":["); after = 0; first = true
-                while (true) {
-                    val page = dao.eventPageThrough(after, spec.oemEventThroughId, spec.from, spec.to, spec.session); if (page.isEmpty()) break
-                    page.forEach { row -> if (!first) writer.write(","); providers += row.provider
-                        writer.write(JSONObject().put("session.id", row.sessionId).put("datetime", presentation.datetime(row.time))
-                            .put("provider", row.provider).put("subject", row.subject).put("kind", row.kind)
-                            .put("before", row.before ?: JSONObject.NULL).put("after", row.after ?: JSONObject.NULL).toString())
-                        first = false; events++ }; after = page.last().id
-                }
                 val profiles = dao.profiles().filter { it.provider in providers }.map { normalizedProfile(it.payload, presentation) }
                 writer.write("],\"contextProfiles\":"); writer.write(JSONArray(profiles).toString()); writer.write("}")
                 return OemCounts(observations, inventory, events, profiles.size.toLong())

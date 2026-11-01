@@ -75,6 +75,12 @@ class MonitorApp : Application() {
         scope.launch {
             try {
                 var initial = config.changes.first()
+                val scopeMigration = getSharedPreferences("telemetry_scope", MODE_PRIVATE)
+                if (!scopeMigration.getBoolean("performance_only", false)) {
+                    db.dao().clearOemOutbox()
+                    check(scopeMigration.edit().putBoolean("performance_only", true).commit())
+                    logs.event("performance_scope_migrated")
+                }
                 if (initial.deviceId.isEmpty()) {
                     initial = initial.copy(deviceId = UUID.randomUUID().toString())
                     config.save(initial)
@@ -134,13 +140,15 @@ class MonitorApp : Application() {
 
     suspend fun checkSources() = withContext(Dispatchers.IO) {
         ready.await()
+        if (collectionPaused(this@MonitorApp, settings.value)) { logs.event("source_check_paused"); return@withContext }
         if (state.value.sessionId != null) { sourceCheckGeneration.incrementAndGet(); return@withContext }
         mutex.withLock {
             if (state.value.sessionId != null) { sourceCheckGeneration.incrementAndGet(); return@withLock }
             checkingSources.value = true
             val s = settings.value
             val collectors = Collectors(this@MonitorApp, s, sources, separateBattery=true)
-            val probe = if (CollectorKind.CPU in s.enabled && s.indirectCpu) CpuProbe(1000) else null
+            val probe = if (CollectorKind.CPU in s.enabled && s.indirectCpu)
+                CpuProbe(1000, mayRead = { !collectionPaused(this@MonitorApp, settings.value) }) else null
             sources.beginCheck()
             logs.event("source_check_started", diagnostic = true)
             try {
@@ -320,7 +328,7 @@ class MonitorApp : Application() {
         val actual = runCatching { SettingsCodec.decode(row.configuration) }.getOrNull() ?: return false
         return actual.monitoringEnabled && actual.continuous &&
             actual.intervalMs == expected.intervalMs && actual.durationSeconds == expected.durationSeconds &&
-            actual.enabled == expected.enabled && actual.collectScreenOff == expected.collectScreenOff &&
+            actual.enabled == expected.enabled && actual.collectScreenOff == expected.collectScreenOff && actual.pauseWhenLocked == expected.pauseWhenLocked &&
             actual.indirectCpu == expected.indirectCpu && actual.batterySettings == expected.batterySettings &&
             actual.selfTelemetry.copy(debugUntil = 0) == expected.selfTelemetry.copy(debugUntil = 0) &&
             actual.oem == expected.oem

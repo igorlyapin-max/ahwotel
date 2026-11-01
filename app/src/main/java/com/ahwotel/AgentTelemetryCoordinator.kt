@@ -17,6 +17,7 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
     private val pendingSlowChecks=mutableSetOf("wear","passport")
     val probes=kotlinx.coroutines.flow.MutableStateFlow<List<TelemetryRecord>>(emptyList())
     suspend fun checkNow() {
+        if (collectionPaused(app, app.settings.value)) { app.logs.event("agent_check_paused"); return }
         recheck()
         val s=app.settings.value
         val b=s.batterySettings
@@ -88,10 +89,12 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
             .put("agent.build",BuildConfig.VERSION_CODE).put("os.version",Build.VERSION.RELEASE).put("android.sdk",Build.VERSION.SDK_INT)
             .put("device.manufacturer",Build.MANUFACTURER).put("device.model",Build.MODEL).put("device.product",Build.PRODUCT)
             .put("timezone",TimeZone.getDefault().id).put("config.version",signature).put("process.id",Process.myPid())
-            .put("screen.on",power.isInteractive).put("doze",power.isDeviceIdleMode).put("power.save",power.isPowerSaveMode)
+            .put("screen.on",power.isInteractive).put("device.locked",app.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
+            .put("doze",power.isDeviceIdleMode).put("power.save",power.isPowerSaveMode)
             .put("network.type",network).put("foreground",app.costs.foreground).put("monitoring.profile",s.oem.profile).toString()
     }
     suspend fun tick(paused: Boolean, now: Long=SystemClock.elapsedRealtime()) {
+        if (!paused && collectionPaused(app, app.settings.value)) { tick(true, now); return }
         if(session==null) return
         val s=app.settings.value; val wall=System.currentTimeMillis()
         val debugNow=wall<s.selfTelemetry.debugUntil
@@ -136,6 +139,7 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
             app.costs.operation("battery_collector",began,true,snapshot.values.size.toLong())
         }
         for((name,enabled,seconds) in listOf(Triple("wear",b.enabled&&b.wear,b.wearSeconds),Triple("passport",b.enabled&&b.passport,b.passportSeconds))) {
+            if (collectionPaused(app, app.settings.value)) return
             if(!ready(name,60)) continue
             val previous=slowLast[name]
             if(enabled && (name in pendingSlowChecks || previous==null || wall<previous || wall-previous>=seconds*1000L)) {
@@ -150,22 +154,22 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
                 app.costs.operation("battery_$name",began,true,values.size.toLong())
             }
         }
-        if(self.enabled) {
+        if(self.enabled && !collectionPaused(app, app.settings.value)) {
             val begin=SystemClock.elapsedRealtime(); val cpu=Debug.threadCpuTimeNanos()
             if(ready("fast",self.fast(wall))) {
                 sampler.fast(self.groups,now).forEach(::observe)
-                if(SelfGroup.BATTERY in self.groups && !batteryRead) {
+                if(SelfGroup.BATTERY in self.groups && !batteryRead && !collectionPaused(app, app.settings.value)) {
                     val snapshot=app.battery.current(b.extended)
                     (snapshot.values+drain.update(snapshot,self.fast(wall)*1000L)).forEach { batteryRows+=record(it,"self",snapshot.wall,snapshot.wall,0) }
                 }
             }
-            if(SelfGroup.STORAGE in self.groups && ready("io",self.ioSeconds)) {
+            if(SelfGroup.STORAGE in self.groups && !collectionPaused(app, app.settings.value) && ready("io",self.ioSeconds)) {
                 val ioRows=io.sample(now,self.processIo,self.systemIo,self.flashWear,self.ioSeconds*1000L).map { record(it,"self",wall,wall,0) }
                 if(ioRows.isNotEmpty()) persist(ioRows,s)
             }
-            if(ready("medium",self.mediumSeconds)) sampler.medium(self.groups,now).forEach(::observe)
+            if(!collectionPaused(app, app.settings.value) && ready("medium",self.mediumSeconds)) sampler.medium(self.groups,now).forEach(::observe)
             app.costs.own((Debug.threadCpuTimeNanos()-cpu)/1_000_000.0,(SystemClock.elapsedRealtime()-begin))
-            if(SelfGroup.STORAGE in self.groups && ready("slow",self.slowSeconds)) sampler.storage().forEach(::observe)
+            if(SelfGroup.STORAGE in self.groups && !collectionPaused(app, app.settings.value) && ready("slow",self.slowSeconds)) sampler.storage().forEach(::observe)
         }
         if(now-startElapsed>=self.windowSeconds*1000L || batteryRows.size>=128) flush(s,wall,now)
     }
@@ -202,7 +206,8 @@ class AgentTelemetryCoordinator(private val app: MonitorApp) {
     }
     private suspend fun flush(s: Settings, wall: Long, now: Long, final: Boolean=false) {
         val begin=SystemClock.elapsedRealtime()
-        if(s.selfTelemetry.enabled && !wasPaused) sampler.medium(s.selfTelemetry.groups.intersect(setOf(SelfGroup.RUNTIME)),now).forEach(::observe)
+        if(s.selfTelemetry.enabled && !wasPaused && !collectionPaused(app, app.settings.value))
+            sampler.medium(s.selfTelemetry.groups.intersect(setOf(SelfGroup.RUNTIME)),now).forEach(::observe)
         app.costs.checkpoint(now)
         val rows=batteryRows.toMutableList()
         if(s.selfTelemetry.enabled) {

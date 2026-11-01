@@ -1,0 +1,11 @@
+# Performance-only collection and lock policy
+
+Code31 distinguishes a skipped sample from a finished session. The pause policy is rechecked before each scheduled read and inside OEM workers. Already started synchronous calls may finish; pausing does not cancel the session. Flush while locked saves buffered data without polling new runtime readings. A trusted stored v1 management envelope can authorize release with a higher revision, while v1 settings remain unsupported. Unsaved Settings drafts survive Activity recreation.
+
+AHWOTel collects CPU, RAM, storage/I/O, thermal, battery and agent overhead measurements. Device model, hardware, Android build, agent version, network and source capabilities provide comparison context. Application inventory, package counts, installation/removal tracking, security posture and administrative policies are no longer collected or displayed. `QUERY_ALL_PACKAGES` and `KNOX_APP_MGMT` are not requested.
+
+Settings → Collection behavior → **Pause collection while device is locked** defaults to off. It uses the current Android keyguard state, including swipe-only locks, rather than the presence of credentials. Collection pauses when either this restriction or the independent screen-off restriction applies. The session timer continues. Buffered data can still be persisted and uploaded. Unlocking resumes eligible streams in the same session with new interval baselines and chart segments.
+
+Deployment profile schema 2 includes `pauseWhenLocked`; primitive MDM uses `pause_when_locked`. Version 1 profiles must be recreated. Existing local settings migrate without resetting performance settings. Historical non-performance data stays in Room until normal retention, but is excluded from UI and new exports. At the first upgraded startup, pending OEM uploads are cleared once because those serialized packets may contain retired signals. Other upload streams and local history remain intact.
+
+Manual acceptance, without reboot: start continuous collection with screen-off collection allowed and lock-pause enabled; lock the device, then turn the screen on without dismissing keyguard. All measurement streams must remain paused. Unlock and verify the same session resumes without CPU/I/O delta spikes or scheduler delays spanning the pause. Repeat with both screen policies and with a timed session expiring while locked.

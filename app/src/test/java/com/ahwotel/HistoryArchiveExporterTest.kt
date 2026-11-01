@@ -18,6 +18,20 @@ import java.util.zip.ZipInputStream
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28], application=android.app.Application::class)
 class HistoryArchiveExporterTest {
+    @Test fun retiredOemObservationsAndInventoryDoNotAppearInExports() = runBlocking {
+        val app = application(); val time = 1000L
+        try {
+            app.db.dao().start(SessionRow("retired", "d", time, reason="", configuration="{}", continuous=false, durationSeconds=60))
+            val old = com.ahwotel.oem.OemObservation(com.ahwotel.oem.OemMetric.PACKAGE_COUNT,
+                "android_standard", com.ahwotel.oem.OemSource.ANDROID_STANDARD,
+                com.ahwotel.oem.OemScope.CURRENT_USER, number=42.0, time=time)
+            app.db.oemDao().observations(listOf(OemObservationRow.from(old, "retired", 0)))
+            val out = ByteArrayOutputStream()
+            HistoryArchiveExporter.write(app, out, HistoryArchiveSpec("retired", 0, 2000, true,
+                setOf(HistoryExportGroup.OEM), "en", "UTC"))
+            assertFalse(entries(out.toByteArray()).containsKey("oem.json"))
+        } finally { app.db.close() }
+    }
     private fun application(): MonitorApp {
         val app = MonitorApp()
         ReflectionHelpers.callInstanceMethod<Void>(app, "attachBaseContext",

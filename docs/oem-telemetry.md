@@ -1,5 +1,7 @@
 # Local OEM telemetry MVP
 
+> Historical specification for earlier builds. Starting with code30 the active contract is [Performance-only collection](performance-collection.md) / [Сбор производительности](performance-collection-ru.md). Inventory, security and policy sections below no longer describe active collection. Historical storage is retained for safe upgrades; retired signals are excluded from new UI, exports and OTLP.
+
 Реализован согласованный локальный вариант `android_oem_extended_telemetry_knox_mvp_TZ.txt`: один APK, существующий мониторинг, дополнительные Android/Android Enterprise/Knox источники, локальная история, OEM-диагностика и экспорт. Backend, fleet dashboard, серверная compliance-оценка, provisioning и автоматическая активация Knox не входят в этот этап. SOTI использует APK и стандартный контракт managed configuration; успешность доставки политик из реального SOTI требует отдельного управляемого стенда.
 
 ## Использование

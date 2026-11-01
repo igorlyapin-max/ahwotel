@@ -58,7 +58,7 @@ class OemCoordinator(private val app: MonitorApp) {
     private val fallbackCategories = mutableSetOf<OemCategory>()
 
     suspend fun restore() {
-        latest.value = app.db.oemDao().latest().associate { key(it.observation()) to it.observation() }
+        latest.value = app.db.oemDao().latest().filter { OemMetric.valueOf(it.metric).active }.associate { key(it.observation()) to it.observation() }
         profiles.value = app.db.oemDao().profiles().mapNotNull { row -> runCatching { decodeProfile(row.payload) }.getOrNull() }
             .associateBy { it.provider }
     }
@@ -78,6 +78,7 @@ class OemCoordinator(private val app: MonitorApp) {
     }
     suspend fun checkNow() {
         app.ready.await()
+        if (collectionPaused(app, app.settings.value)) { app.logs.event("oem_check_paused"); return }
         if (sessionId != null) { generation.incrementAndGet(); return }
         checkMutex.withLock {
             if (sessionId != null) { generation.incrementAndGet(); return }
@@ -85,7 +86,7 @@ class OemCoordinator(private val app: MonitorApp) {
             app.logs.event("oem_check_started", diagnostic = true)
             try {
                 val settings = app.settings.value.oem
-                for (category in OemCategory.entries.filter { it != OemCategory.BATTERY }) {
+                for (category in OemCategory.activeEntries.filter { it != OemCategory.BATTERY }) {
                     if (sessionId != null) { generation.incrementAndGet(); break }
                     collectCategory(category, settings, null, 0)
                 }
@@ -98,10 +99,9 @@ class OemCoordinator(private val app: MonitorApp) {
     private suspend fun runSession(session: SessionRow) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                changed += if (intent.action?.startsWith("android.intent.action.PACKAGE_") == true) OemCategory.INVENTORY else OemCategory.BATTERY
+                changed += OemCategory.BATTERY
             }
         }
-        val packageReceiver = receiver
         val cm = app.getSystemService(ConnectivityManager::class.java)
         val network = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) { changed += OemCategory.NETWORK }
@@ -113,13 +113,10 @@ class OemCoordinator(private val app: MonitorApp) {
             addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
-        ContextCompat.registerReceiver(app, packageReceiver, IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_REPLACED); addDataScheme("package")
-        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         try {
             runCatching { cm.registerDefaultNetworkCallback(network); networkRegistered = true }
-            val due = OemCategory.entries.associateWith { 0L }.toMutableMap()
-            val lastCollected = OemCategory.entries.associateWith { 0L }.toMutableMap()
+            val due = OemCategory.activeEntries.associateWith { 0L }.toMutableMap()
+            val lastCollected = OemCategory.activeEntries.associateWith { 0L }.toMutableMap()
             var lastSettings: OemSettings? = null
             var lastGeneration = generation.get()
             var segment = 0
@@ -130,7 +127,7 @@ class OemCoordinator(private val app: MonitorApp) {
                 val s = app.settings.value
                 if (!s.monitoringEnabled) break
                 val now = SystemClock.elapsedRealtime(); val wall = System.currentTimeMillis()
-                val shouldPause = !s.collectScreenOff && !app.getSystemService(PowerManager::class.java).isInteractive
+                val shouldPause = com.ahwotel.collectionPaused(app, s)
                 if (shouldPause != paused || now - lastElapsed > 5000 || kotlin.math.abs((wall - lastWall) - (now - lastElapsed)) > 2000) {
                     paused = shouldPause; segment++; due.keys.forEach { due[it] = 0 }
                     providers.forEach { it.reset() }
@@ -140,7 +137,7 @@ class OemCoordinator(private val app: MonitorApp) {
                     providers.forEach { it.reset() }
                 }
                 if (!paused) {
-                    for (category in OemCategory.entries.filter { it != OemCategory.BATTERY }) {
+                    for (category in OemCategory.activeEntries.filter { it != OemCategory.BATTERY }) {
                         if (SystemClock.elapsedRealtime() >= due.getValue(category) ||
                             (s.oem.enabled && category in s.oem.categories && category in changed && SystemClock.elapsedRealtime() - lastCollected.getValue(category) >= 15_000)) {
                             changed.remove(category)
@@ -162,13 +159,18 @@ class OemCoordinator(private val app: MonitorApp) {
     }
 
     private suspend fun collectCategory(category: OemCategory, config: OemSettings, session: SessionRow?, segment: Int) = coroutineScope {
+        if (collectionPaused(app, app.settings.value)) return@coroutineScope
         // Standard and Knox have separate bounded workers; results are consumed independently.
         providers.map { provider -> async {
-            val allowed = config.enabled && category in config.categories && (provider.id != "samsung_knox" || config.knox)
+            val allowed = category.active && config.enabled && category in config.categories && (provider.id != "samsung_knox" || config.knox)
             val (batch, error) = if (allowed) workers.getValue(provider.id).run {
                 val began = SystemClock.elapsedRealtime()
                 var ok = false; var count = 0L
-                try { provider.collect(category).also { ok = true; count = it.observations.size.toLong() } }
+                try {
+                    readIfAllowed({ collectionPaused(app, app.settings.value) }) {
+                        provider.collect(category).also { ok = true; count = it.observations.size.toLong() }
+                    } ?: ProviderBatch(emptyList())
+                }
                 finally { app.costs.operation("${provider.id}_${category.name.lowercase()}", began, ok, samples = count) }
             } else null to OemReason.DISABLED
             val data = batch ?: ProviderBatch(metricsFor(provider.id, category).map { m ->
@@ -179,7 +181,7 @@ class OemCoordinator(private val app: MonitorApp) {
             currentCoroutineContext().ensureActive()
             val current = app.settings.value
             if (session != null && (sessionId != session.id || !current.monitoringEnabled ||
-                (!current.collectScreenOff && !app.getSystemService(PowerManager::class.java).isInteractive))) return@async
+                com.ahwotel.collectionPaused(app, current))) return@async
             if (current.oem != config) return@async
             if (session == null && sessionId != null) return@async
             val status = if (!allowed) ProviderState.NOT_CONFIGURED else if (data.observations.isEmpty()) ProviderState.API_NOT_SUPPORTED
@@ -194,7 +196,7 @@ class OemCoordinator(private val app: MonitorApp) {
             if (session != null && app.sessionTiming?.canRecord(session.id, SystemClock.elapsedRealtime()) != true) return
             if (app.settings.value.oem != config || (session == null && sessionId != null)) return
             if (session != null && (!app.settings.value.monitoringEnabled ||
-                (!app.settings.value.collectScreenOff && !app.getSystemService(PowerManager::class.java).isInteractive))) return
+                com.ahwotel.collectionPaused(app, app.settings.value))) return
             val old = latest.value
             val next = old.toMutableMap()
             val events = mutableListOf<OemEventRow>()
@@ -228,21 +230,6 @@ class OemCoordinator(private val app: MonitorApp) {
                 app.db.oemDao().profile(OemProfileRow(provider.id, profile.checkedAt, encodeProfile(profile)))
                 if (session != null && status != ProviderState.NOT_CONFIGURED) {
                     app.db.oemDao().observations(batch.observations.map { OemObservationRow.from(it, session.id, segment) })
-                    batch.inventory?.let { inventory ->
-                        val previous = app.db.oemDao().latestInventory(inventory.provider)
-                        val before = previous?.let { InventoryCodec.decode(it.payload) }.orEmpty().associateBy { it.packageName }
-                        val after = inventory.entries.associateBy { it.packageName }
-                        if (previous != null) {
-                            after.forEach { (name, entry) -> if (before[name] != entry) events += OemEventRow(sessionId = session.id, time = inventory.time,
-                                provider = inventory.provider, subject = name, kind = if (name in before) "PACKAGE_CHANGED" else "PACKAGE_ADDED",
-                                before = before[name]?.let { InventoryCodec.encode(listOf(it)) }, after = InventoryCodec.encode(listOf(entry))) }
-                            if (previous.complete && inventory.complete) (before.keys - after.keys).forEach { name -> events += OemEventRow(
-                                sessionId = session.id, time = inventory.time, provider = inventory.provider, subject = name, kind = "PACKAGE_REMOVED",
-                                before = InventoryCodec.encode(listOf(before.getValue(name))), after = null) }
-                        }
-                        app.db.oemDao().inventory(OemInventoryRow(sessionId = session.id, time = inventory.time, provider = inventory.provider,
-                            complete = inventory.complete, payload = InventoryCodec.encode(inventory.entries)))
-                    }
                     if (events.isNotEmpty()) app.db.oemDao().events(events)
                     if (app.settings.value.otlpEnabled) runCatching {
                         val payload = OemTelemetry.encode(session, batch.observations, profile, app.settings.value.backendEnvironment)
@@ -265,10 +252,10 @@ class OemCoordinator(private val app: MonitorApp) {
                 OemCategory.SECURITY -> listOf(OemMetric.INTEGRITY)
                 OemCategory.RESOURCES -> listOf(OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL)
                 else -> emptyList()
-            }).distinct() else OemMetric.entries.filter { it.category == category && it !in setOf(OemMetric.KNOX_API, OemMetric.KNOX_VERSION, OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL) }
+            }).distinct() else OemMetric.entries.filter { it.active && it.category == category && it !in setOf(OemMetric.KNOX_API, OemMetric.KNOX_VERSION, OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL) }
         fun encodeProfile(p: OemProviderProfile) = JSONObject().put("provider", p.provider).put("state", p.state.name)
             .put("checkedAt", p.checkedAt).put("license", p.license).put("capabilities", JSONObject().apply { p.capabilities.forEach { (c, s) -> put(c.name, s.name) } }).toString()
         fun decodeProfile(raw: String): OemProviderProfile = JSONObject(raw).let { o -> OemProviderProfile(o.getString("provider"), ProviderState.valueOf(o.getString("state")),
-            o.getLong("checkedAt"), o.getJSONObject("capabilities").let { c -> c.keys().asSequence().associate { OemCategory.valueOf(it) to ProviderState.valueOf(c.getString(it)) } }, o.getString("license")) }
+            o.getLong("checkedAt"), o.getJSONObject("capabilities").let { c -> c.keys().asSequence().associate { OemCategory.valueOf(it) to ProviderState.valueOf(c.getString(it)) }.filterKeys { it.active } }, o.getString("license")) }
     }
 }

@@ -12,7 +12,7 @@
     <string name="oem_balanced">Сбалансированный</string>
     <string name="oem_custom">Свой</string>
     <string name="oem_interval">%1$s: интервал в секундах</string>
-    <string name="oem_interval_hint">Устройство и приложения: 3600–86400 с. Другие группы: 15–86400 с. События системы обновляют группу не чаще раза в 15 с. После паузы расчёт скоростей начинается заново.</string>
+    <string name="oem_interval_hint">Контекст устройства: 3600–86400 с. Другие группы: 15–86400 с. События системы обновляют группу не чаще раза в 15 с. После паузы расчёт скоростей начинается заново.</string>
     <string name="oem_upload_interval">Задержка отправки, секунды (0–86400)</string>
     <string name="oem_environment">Метка окружения (не адрес сервера)</string>
     <string name="oem_monitoring_disabled">Мониторинг отключён конфигурацией.</string>

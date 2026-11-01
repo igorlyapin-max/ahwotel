@@ -12,7 +12,9 @@ enum class ManagedTransition { NONE, APPLIED, RELEASED }
 /** Accepts either the legacy primitive overlay or one authoritative deployment profile. */
 class ManagedConfiguration(private val context: Context, private val logs: Diagnostics) {
     private val preferences = context.getSharedPreferences("managed_configuration", Context.MODE_PRIVATE)
-    private var accepted = runCatching { JSONObject(preferences.getString("accepted", "{}")!!) }.getOrDefault(JSONObject())
+    private var accepted = runCatching { JSONObject(preferences.getString("accepted", "{}")!!) }.getOrDefault(JSONObject()).apply {
+        remove("application_inventory_enabled"); remove("security_telemetry_enabled")
+    }
     private var profileRaw = preferences.getString("deploymentProfile", null)
     private var profile = profileRaw?.let { runCatching { DeploymentProfileCodec.decode(it) }.getOrNull() }
     private var verboseUntil = preferences.getLong("verboseUntil", 0)
@@ -21,9 +23,9 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         private set
     val active = MutableStateFlow(profileRaw != null)
     val keys = MutableStateFlow(if (profileRaw != null) setOf(PROFILE_KEY) else accepted.keys().asSequence().toSet())
-    val version = MutableStateFlow(profile?.let { "${it.profileId}:${it.revision}" } ?: accepted.optString("config_version", ""))
-    val profileId = MutableStateFlow(profile?.profileId.orEmpty())
-    val revision = MutableStateFlow(profile?.revision ?: 0)
+    val version = MutableStateFlow(currentIdentity()?.let { "${it.profileId}:${it.revision}" } ?: accepted.optString("config_version", ""))
+    val profileId = MutableStateFlow(currentIdentity()?.profileId.orEmpty())
+    val revision = MutableStateFlow(currentIdentity()?.revision ?: 0)
     val desiredState = MutableStateFlow(profile?.desiredState)
     val rejected = MutableStateFlow(profileRaw != null && profile == null)
 
@@ -90,7 +92,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
             }
             "release" -> {
                 require(bundle.keySet() == setOf(ACTION_KEY, PROFILE_ID_KEY, REVISION_KEY)) { "invalid_managed_release" }
-                val current = profile ?: error("management_not_active")
+                val current = currentIdentity() ?: error("management_not_active")
                 val id = bundle.getString(PROFILE_ID_KEY)
                 val revisionValue = bundle.get(REVISION_KEY)
                 require(revisionValue is Int || revisionValue is Long) { "invalid_managed_release" }
@@ -128,9 +130,9 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
     private fun publish() {
         active.value = profileRaw != null
         keys.value = if (profileRaw != null) setOf(PROFILE_KEY) else accepted.keys().asSequence().toSet()
-        version.value = profile?.let { "${it.profileId}:${it.revision}" } ?: accepted.optString("config_version", "")
-        profileId.value = profile?.profileId.orEmpty()
-        revision.value = profile?.revision ?: 0
+        version.value = currentIdentity()?.let { "${it.profileId}:${it.revision}" } ?: accepted.optString("config_version", "")
+        profileId.value = currentIdentity()?.profileId.orEmpty()
+        revision.value = currentIdentity()?.revision ?: 0
         desiredState.value = profile?.desiredState
     }
 
@@ -140,6 +142,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         for (key in accepted.keys()) {
             s = when (key) {
                 "monitoring_enabled" -> s.copy(monitoringEnabled = accepted.getBoolean(key))
+                "pause_when_locked" -> s.copy(pauseWhenLocked = accepted.getBoolean(key))
                 "oem_telemetry_enabled" -> s.copy(oem = s.oem.copy(enabled = accepted.getBoolean(key)))
                 "knox_telemetry_enabled" -> s.copy(oem = s.oem.copy(knox = accepted.getBoolean(key)))
                 "sampling_profile" -> s.copy(oem = s.oem.copy(profile = accepted.getString(key)))
@@ -179,6 +182,14 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
 
     private data class RevisionFloor(val revision: Long, val fingerprint: String)
 
+    private fun currentIdentity(): DeploymentProfileCodec.Identity? {
+        profile?.let { return DeploymentProfileCodec.Identity(it.profileId, it.revision, it.fingerprint) }
+        return profileRaw?.let { raw -> runCatching { DeploymentProfileCodec.storedIdentity(raw) }.getOrNull() }
+            ?.takeIf { identity -> floors[identity.profileId]?.let {
+                it.revision == identity.revision && it.fingerprint == identity.fingerprint
+            } == true }
+    }
+
     private fun loadFloors(): MutableMap<String, RevisionFloor> = runCatching {
         val root = JSONObject(preferences.getString(FLOORS_KEY, "{}")!!)
         root.keys().asSequence().associateWith { id ->
@@ -209,6 +220,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         var categories = next.oem.categories
         k.mapNotNull(::categoryKey).forEach { c -> categories = if (c in old.oem.categories) categories + c else categories - c }
         return next.copy(monitoringEnabled = if ("monitoring_enabled" in k) old.monitoringEnabled else next.monitoringEnabled,
+            pauseWhenLocked = if ("pause_when_locked" in k) old.pauseWhenLocked else next.pauseWhenLocked,
             oem = next.oem.copy(enabled = if ("oem_telemetry_enabled" in k) old.oem.enabled else next.oem.enabled,
                 knox = if ("knox_telemetry_enabled" in k) old.oem.knox else next.oem.knox,
                 profile = if ("sampling_profile" in k) old.oem.profile else next.oem.profile, categories = categories),
@@ -230,9 +242,9 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         private const val APPLIED_FINGERPRINT_KEY = "appliedFingerprint"
         private const val RELEASE_FINGERPRINT = "released"
         private const val LEGACY_FINGERPRINT = "legacy"
-        private val boolKeys = setOf("monitoring_enabled", "oem_telemetry_enabled", "knox_telemetry_enabled", "application_inventory_enabled", "security_telemetry_enabled", "network_telemetry_enabled")
+        private val boolKeys = setOf("monitoring_enabled", "pause_when_locked", "oem_telemetry_enabled", "knox_telemetry_enabled", "network_telemetry_enabled")
         private val stringKeys = setOf("sampling_profile", "debug_mode", "backend_environment", "config_version")
-        fun categoryKey(key: String) = when(key) { "application_inventory_enabled" -> OemCategory.INVENTORY; "security_telemetry_enabled" -> OemCategory.SECURITY; "network_telemetry_enabled" -> OemCategory.NETWORK; else -> null }
+        fun categoryKey(key: String) = when(key) { "network_telemetry_enabled" -> OemCategory.NETWORK; else -> null }
         fun validate(bundle: Bundle): JSONObject {
             require(bundle.keySet().all { it in boolKeys || it in stringKeys || it == "upload_interval" })
             val json = JSONObject()

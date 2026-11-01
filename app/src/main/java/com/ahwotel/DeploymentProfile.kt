@@ -40,7 +40,19 @@ private sealed interface StrictJson {
 
 /** Public, versioned deployment format. It intentionally excludes installation identity and runtime state. */
 object DeploymentProfileCodec {
-    const val SCHEMA_VERSION = 1
+    internal data class Identity(val profileId: String, val revision: Long, val fingerprint: String)
+
+    /** Only the persisted management envelope; never interprets old settings. */
+    internal fun storedIdentity(raw: String): Identity {
+        require(raw.toByteArray(StandardCharsets.UTF_8).size <= MAX_BYTES)
+        val root = parseStrict(raw) as? StrictJson.ObjectValue ?: error("invalid_profile_json")
+        require(root.values.keys == topKeys)
+        require(root.integer("schemaVersion") in 1L..SCHEMA_VERSION.toLong())
+        val id = root.string("profileId").also { require(it.matches(profileId)) }
+        val revision = root.integer("revision").also { require(it in 1..Int.MAX_VALUE.toLong()) }
+        return Identity(id, revision, fingerprint(root))
+    }
+    const val SCHEMA_VERSION = 2
     const val MAX_BYTES = 128 * 1024
     private val profileId = Regex("[A-Za-z0-9._-]{1,64}")
     private val topKeys = setOf("schemaVersion", "profileId", "revision", "desiredState", "auth", "settings")
@@ -92,6 +104,10 @@ object DeploymentProfileCodec {
             .put("deviceId", "profile-placeholder")
             .put("verboseUntil", 0)
         complete.getJSONObject("selfTelemetry").put("debugUntil", 0)
+        val categories = complete.getJSONObject("oem").getJSONArray("categories")
+        require((0 until categories.length()).all { index ->
+            com.ahwotel.oem.OemCategory.activeEntries.any { it.name == categories.getString(index) }
+        }) { "invalid_profile_categories" }
         val settings = SettingsCodec.decode(complete.toString())
         validateDesiredState(desired, settings)
         return DeploymentProfile(id, revision, desired, settings, fingerprint(root))

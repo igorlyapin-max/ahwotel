@@ -162,7 +162,9 @@ class MainActivity : AppCompatActivity() {
         } }
         item { OutlinedButton({ extraPage="storage" }) { Text(stringResource(R.string.storage)) } }
         item {
-            Panel(stringResource(if (state.paused) R.string.paused else if (state.sessionId != null) R.string.running else R.string.idle)) {
+            Panel(stringResource(if (state.paused && settings.pauseWhenLocked &&
+                app.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) R.string.paused_locked
+                else if (state.paused) R.string.paused else if (state.sessionId != null) R.string.running else R.string.idle)) {
                 Text(stringResource(if (settings.otlpEnabled) R.string.export_enabled else R.string.local_mode), color = Accent)
                 if (state.sessionId != null) {
                     Text(state.sessionId!!, style = MaterialTheme.typography.bodySmall)

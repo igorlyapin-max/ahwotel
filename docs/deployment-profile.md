@@ -4,7 +4,7 @@ AHWOTel can export a standalone installation as a versioned JSON deployment prof
 
 The profile contains collection, retention, Battery, Self telemetry, OEM/Knox, diagnostic and OTLP settings. It never contains the installation `deviceId`, UI language, samples, upload queue, session state, credentials, certificates, or absolute debug expiry. Each device therefore retains its own telemetry identity.
 
-The current schema is `docs/deployment-profile.schema.json`, `schemaVersion` is `1`, and `auth.mode` must be `none`. Unknown, missing and duplicate fields are rejected. The maximum UTF-8 document size is 128 KiB. Profiles with `desiredState=running` must select continuous collection.
+The current schema is `docs/deployment-profile.schema.json`, `schemaVersion` is `2`, and `auth.mode` must be `none`. Unknown, missing and duplicate fields are rejected. The maximum UTF-8 document size is 128 KiB. Profiles with `desiredState=running` must select continuous collection. Version 1 profiles must be recreated. Version 2 adds `settings.pauseWhenLocked` (default false) and limits OEM categories to DEVICE, NETWORK, BATTERY and RESOURCES. The primitive MDM key is `pause_when_locked`.
 
 ## Manual workflow
 

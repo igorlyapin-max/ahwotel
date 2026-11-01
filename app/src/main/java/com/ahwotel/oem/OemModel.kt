@@ -1,6 +1,10 @@
 package com.ahwotel.oem
 
-enum class OemCategory(val seconds: Int) { DEVICE(86400), SECURITY(900), INVENTORY(86400), NETWORK(300), BATTERY(60), RESOURCES(60), POLICY(900) }
+// Retired enum IDs remain solely to decode stored history/settings; activeEntries is the public catalog.
+enum class OemCategory(val seconds: Int) { DEVICE(86400), SECURITY(900), INVENTORY(86400), NETWORK(300), BATTERY(60), RESOURCES(60), POLICY(900);
+    val active get() = this in setOf(DEVICE, NETWORK, BATTERY, RESOURCES)
+    companion object { val activeEntries get() = entries.filter { it.active } }
+}
 enum class OemStatus { AVAILABLE, UNAVAILABLE, UNSUPPORTED, PERMISSION_DENIED, NOT_CONFIGURED, LICENSE_REQUIRED, LICENSE_ERROR, POLICY_RESTRICTED, ERROR, DISABLED }
 enum class ProviderState { UNAVAILABLE, AVAILABLE, NOT_CONFIGURED, PERMISSION_DENIED, LICENSE_REQUIRED, LICENSE_ERROR, API_NOT_SUPPORTED, POLICY_RESTRICTED, READY, DEGRADED, ERROR }
 enum class OemSource { ANDROID_STANDARD, ANDROID_ENTERPRISE, OEM, DERIVED }
@@ -70,14 +74,15 @@ enum class OemMetric(val wire: String, val category: OemCategory, val unit: Stri
     PASSWORD_POLICY("device.policy.password", OemCategory.POLICY, kind = ValueKind.STATE),
     EXTERNAL_STORAGE("device.storage.external_state", OemCategory.POLICY, kind = ValueKind.STATE),
     VPN_POLICY("device.policy.vpn", OemCategory.POLICY, kind = ValueKind.STATE);
+    val active get() = category.active && this != SERIAL_AVAILABLE
     val key get() = name.lowercase()
 }
 
 data class OemSettings(val enabled: Boolean = false, val knox: Boolean = true,
-    val categories: Set<OemCategory> = OemCategory.entries.toSet(), val profile: String = "balanced",
-    val intervals: Map<OemCategory, Int> = OemCategory.entries.associateWith { it.seconds }) {
+    val categories: Set<OemCategory> = OemCategory.activeEntries.toSet(), val profile: String = "balanced",
+    val intervals: Map<OemCategory, Int> = OemCategory.activeEntries.associateWith { it.seconds }) {
     fun seconds(category: OemCategory) = if (profile == "balanced") category.seconds else intervals.getValue(category)
-    fun valid() = profile in setOf("balanced", "custom") && intervals.keys == OemCategory.entries.toSet() &&
+    fun valid() = categories.all { it.active } && profile in setOf("balanced", "custom") && intervals.keys == OemCategory.activeEntries.toSet() &&
         intervals.all { (c, s) -> s in (if (c in setOf(OemCategory.DEVICE, OemCategory.INVENTORY)) 3600 else 15)..86400 }
 }
 

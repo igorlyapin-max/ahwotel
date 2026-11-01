@@ -4,7 +4,7 @@ package com.ahwotel.oem
 object KnoxCapabilityRegistry {
     data class Entry(val id: String, val minimumAndroidSdk: Int, val minimumKnoxApi: Int,
         val requiredPermission: String?, val licenseRequirement: String, val requiredPolicy: String?, val call: KnoxCall)
-    val entries = KnoxCall.entries.map { call -> Entry(call.metric.wire, 26, call.minimumApi,
+    val entries = KnoxCall.entries.filter { it.metric.active }.map { call -> Entry(call.metric.wire, 26, call.minimumApi,
         call.requiredPermission, if (call.licensed) "KNOX_AUTHORIZATION" else "NOT_DECLARED", null, call) }
     fun find(metric: OemMetric) = entries.find { it.call.metric == metric }
 }

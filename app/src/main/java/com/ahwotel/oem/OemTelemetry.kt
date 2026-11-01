@@ -17,6 +17,7 @@ import java.io.ByteArrayOutputStream
 /** Numeric measurements and capability metadata only. Each point retains its observation time. */
 object OemTelemetry {
     fun encode(session: SessionRow, rows: List<OemObservation>, profile: OemProviderProfile, environment: String): ByteArray {
+        val performanceRows = rows.filter { it.metric.active }
         var current: OemObservation? = null
         val reader = object : MetricReader {
             lateinit var registration: CollectionRegistration
@@ -38,7 +39,7 @@ object OemTelemetry {
             fun attributes(row: OemObservation) = Attributes.builder().put("source", row.source.name)
                 .put("measurement.scope", row.scope.name).put("quality", row.quality.name)
                 .put("status", row.status.name).put("reason", row.reason.name).put("capability", row.metric.category.name).build()
-            rows.map { it.metric }.distinct().forEach { metric ->
+            performanceRows.map { it.metric }.distinct().forEach { metric ->
                 meter.gaugeBuilder("agent.oem.${metric.wire}").setUnit(metric.unit).buildWithCallback { observer ->
                     current?.takeIf { it.metric == metric && it.status == OemStatus.AVAILABLE }?.let { row ->
                         row.number?.let { observer.record(it, attributes(row)) }
@@ -48,7 +49,7 @@ object OemTelemetry {
             meter.gaugeBuilder("agent.oem.capability").buildWithCallback { observer -> current?.let { row ->
                 observer.record(1.0, attributes(row).toBuilder().put("metric", row.metric.wire).build())
             } }
-            val metrics = rows.flatMap { row -> current = row; reader.registration.collectAllMetrics().toList() }
+            val metrics = performanceRows.flatMap { row -> current = row; reader.registration.collectAllMetrics().toList() }
             return ByteArrayOutputStream().use { out -> MetricsRequestMarshaler.create(metrics).writeBinaryTo(out); out.toByteArray() }
         } finally { provider.close() }
     }

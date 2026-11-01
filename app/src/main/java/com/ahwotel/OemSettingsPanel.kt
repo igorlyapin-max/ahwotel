@@ -15,7 +15,7 @@ import com.ahwotel.oem.*
         Text(stringResource(R.string.oem_profile))
         Choice(oem.profile, listOf("balanced" to stringResource(R.string.oem_balanced), "custom" to stringResource(R.string.oem_custom)),
             enabled = "sampling_profile" !in managed) { set(oem.copy(profile = it)) }
-        OemCategory.entries.filter { it != OemCategory.BATTERY }.forEach { category ->
+        OemCategory.activeEntries.filter { it != OemCategory.BATTERY }.forEach { category ->
             val locked = managed.any { ManagedConfiguration.categoryKey(it) == category }
             Toggle(oemCategoryTitle(category), category in oem.categories, enabled = !locked) {
                 set(oem.copy(categories = if (it) oem.categories + category else oem.categories - category))

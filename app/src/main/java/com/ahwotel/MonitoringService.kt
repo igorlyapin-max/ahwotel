@@ -21,9 +21,8 @@ class MonitoringService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val paused = intent.action == Intent.ACTION_SCREEN_OFF && !app.settings.value.collectScreenOff
             scope.launch { app.mutex.withLock {
-                active?.let { app.updateSessionRuntimeLocked(it, paused, SystemClock.elapsedRealtime()) }
+                active?.let { app.updateSessionRuntimeLocked(it, collectionPaused(app, app.settings.value), SystemClock.elapsedRealtime()) }
                 app.timingChanges.trySend(Unit)
             } }
         }
@@ -33,7 +32,7 @@ class MonitoringService : Service() {
     override fun onCreate() {
         super.onCreate()
         ContextCompat.registerReceiver(this, screenReceiver, IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.monitoring), NotificationManager.IMPORTANCE_LOW))
@@ -150,7 +149,8 @@ class MonitoringService : Service() {
 
     private suspend fun runSession(session: SessionRow, snapshot: Settings, start: Long) {
         val collectors = Collectors(this, snapshot, app.sources, separateBattery=true)
-        val probe = if (CollectorKind.CPU in snapshot.enabled && snapshot.indirectCpu) CpuProbe(snapshot.intervalMs) else null
+        val probe = if (CollectorKind.CPU in snapshot.enabled && snapshot.indirectCpu)
+            CpuProbe(snapshot.intervalMs, mayRead = { !collectionPaused(app, app.settings.value) }) else null
         app.sources.beginCheck()
         var checkGeneration = app.sourceCheckGeneration.get()
         val power = getSystemService(PowerManager::class.java)
@@ -159,6 +159,7 @@ class MonitoringService : Service() {
         var previousWall: Long? = null
         var segment = 0
         var paused = false
+        var lastPauseReason: CollectionPauseReason? = null
         var count = 0
         var cleanupAt = start
         var endReason = "process_interrupted"
@@ -170,7 +171,9 @@ class MonitoringService : Service() {
             app.oem.start(session)
             while (currentCoroutineContext().isActive) {
                 val now = SystemClock.elapsedRealtime()
-                val shouldPause = !power.isInteractive && !app.settings.value.collectScreenOff
+                val pauseReason = collectionPauseReason(app, app.settings.value)
+                val shouldPause = pauseReason != null
+                if (pauseReason != lastPauseReason) { lastPauseReason = pauseReason; refreshNotification() }
                 val completion = app.mutex.withLock { app.updateSessionRuntimeLocked(session.id, shouldPause, now) }
                 if (completion != null) { endReason = completion; break }
                 if (shouldPause != paused) {
@@ -178,7 +181,8 @@ class MonitoringService : Service() {
                     probe?.setPaused(paused)
                     collectors.reset(); segment++; previous = null; previousWall = null
                     if (!paused) next = now
-                    app.logs.event(if (paused) "screen_off_paused" else "screen_on_resumed")
+                    app.logs.event(if (paused) "collection_policy_paused" else "collection_policy_resumed")
+                    refreshNotification()
                 }
                 updateWakeLock(!paused && app.settings.value.collectScreenOff)
                 if (notificationLanguage != app.settings.value.language) {
@@ -191,7 +195,7 @@ class MonitoringService : Service() {
                     app.logs.event("source_check_started", diagnostic = true)
                 }
                 app.agentTelemetry.tick(paused, now)
-                if (!paused && now >= next) {
+                if (!paused && now >= next && !collectionPaused(app, app.settings.value)) {
                     val lateness = (now - next).coerceAtLeast(0)
                     app.costs.add(AgentMetric.SCHEDULED, 1.0 + lateness / snapshot.intervalMs)
                     app.costs.add(AgentMetric.EXECUTED, 1.0)
@@ -211,8 +215,10 @@ class MonitoringService : Service() {
                     val sample = raw.withProbe(reading, probeElapsed, snapshot.intervalMs).copy(
                         sources = app.sources.sampleJson(), capabilities = raw.capabilities + ";" + probeStatuses)
                     val recorded = app.mutex.withLock {
-                        val stop = app.updateSessionRuntimeLocked(session.id, paused, SystemClock.elapsedRealtime())
-                        if (stop != null) { endReason = stop; return@withLock false }
+                        commitSample(
+                            paused = { collectionPaused(app, app.settings.value) },
+                            completion = { currentPause -> app.updateSessionRuntimeLocked(session.id, currentPause, SystemClock.elapsedRealtime()) },
+                        ) {
                         if (app.settings.value.otlpEnabled && telemetry == null) telemetry = Telemetry(session)
                         if (!app.settings.value.otlpEnabled) { telemetry?.close(); telemetry = null }
                         val writeStarted = SystemClock.elapsedRealtime()
@@ -229,9 +235,13 @@ class MonitoringService : Service() {
                             }
                         } catch (_: Exception) { app.logs.event("otlp_encode_failed", error = true) }
                         if (now >= cleanupAt) { app.cleanupLocked(); cleanupAt = now + 60_000 }
-                        true
+                        }
                     }
-                    if (!recorded) break
+                    when (recorded) {
+                        SampleCommit.Paused -> continue
+                        is SampleCommit.Finished -> { endReason = recorded.reason; break }
+                        SampleCommit.Recorded -> Unit
+                    }
                     if (sample.capabilities != lastCapabilities) {
                         app.logs.event("capabilities_changed", diagnostic = true)
                         if (sample.capabilities.contains("UNSUPPORTED")) app.logs.event("collector_unsupported")
@@ -299,7 +309,12 @@ class MonitoringService : Service() {
         })
         val stop = Intent(this, MonitoringService::class.java).setAction(STOP).putExtra("sessionId", active)
         val builder = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_monitor)
-            .setContentTitle(localized.getString(R.string.app_name)).setContentText(localized.getString(R.string.notification_text))
+            .setContentTitle(localized.getString(R.string.app_name)).setContentText(localized.getString(
+                when (collectionPauseReason(app, app.settings.value)) {
+                    CollectionPauseReason.LOCKED -> R.string.paused_locked
+                    CollectionPauseReason.SCREEN_OFF -> R.string.paused
+                    null -> R.string.notification_text
+                }))
             .setOngoing(true).setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
         if (!app.managed.active.value) builder.addAction(0, localized.getString(R.string.stop),
             PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))

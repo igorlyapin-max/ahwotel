@@ -124,6 +124,7 @@ interface MonitorDao {
     @Query("SELECT MIN(MAX(dueAt,nextAttempt)) FROM outbox") suspend fun nextPendingTime(): Long?
     @Query("DELETE FROM outbox WHERE id=:id") suspend fun deletePending(id: Long)
     @Query("DELETE FROM outbox") suspend fun clearOutbox()
+    @Query("DELETE FROM outbox WHERE stream='oem'") suspend fun clearOemOutbox()
     @Query("DELETE FROM outbox WHERE createdAt + :retentionMs <= :now AND dueAt + 3600000 <= :now")
     suspend fun expireOutbox(now: Long, retentionMs: Long): Int
     @Query("SELECT COALESCE(SUM(length(payload)),0) FROM outbox") suspend fun outboxBytes(): Long

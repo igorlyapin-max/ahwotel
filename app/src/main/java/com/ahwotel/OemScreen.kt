@@ -54,10 +54,6 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val profiles by app.oem.profiles.collectAsStateWithLifecycle()
     val checking by app.oem.checking.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
-    val liveInventoryRows=if(showHistory) emptyList() else remember { app.db.oemDao().inventories() }
-        .collectAsStateWithLifecycle(initialValue = emptyList()).value
-    val liveEvents=if(showHistory) emptyList() else remember { app.db.oemDao().recentEvents() }
-        .collectAsStateWithLifecycle(initialValue = emptyList()).value
     val liveSessions=if(showHistory) emptyList() else remember { app.db.dao().sessions() }
         .collectAsStateWithLifecycle(initialValue = emptyList()).value
     val sessions=if(showHistory) revision?.sessions.orEmpty() else liveSessions
@@ -67,11 +63,9 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
         .collectAsStateWithLifecycle(initialValue=emptyList()).value
     var session by rememberSaveable { mutableStateOf<String?>(null) }
     var sessionMenu by remember { mutableStateOf(false) }
-    var mode by rememberSaveable { mutableStateOf("values") }
     var showProfiles by rememberSaveable { mutableStateOf(false) }
     var categoryName by rememberSaveable { mutableStateOf(OemCategory.DEVICE.name) }
-    val category = OemCategory.valueOf(categoryName)
-    var inventoryProvider by rememberSaveable { mutableStateOf("android_standard") }
+    val category = OemCategory.valueOf(categoryName).takeIf { it.active } ?: OemCategory.DEVICE
     var help by rememberSaveable { mutableStateOf<String?>(null) }
     var graph by rememberSaveable { mutableStateOf<String?>(null) }
     val window = remember { HistoryWindowState() }
@@ -92,8 +86,8 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             OemPeriodData(
                 app.db.oemDao().presenceThrough(target.from,target.to,target.session,target.revision),
                 app.db.oemDao().rangeLatestThrough(target.from,target.to,target.session,target.revision).map { it.observation() },
-                app.db.oemDao().inventoriesThrough(target.from,target.to,target.session,target.inventoryRevision),
-                app.db.oemDao().recentEventsThrough(target.from,target.to,target.session,target.eventRevision),
+                emptyList(),
+                emptyList(),
                 target.graphKey,
                 if(chartMetric!=null && chartParts.size==2) app.db.oemDao().chart(oemChartQuery(chartMetric,chartParts[0],target.session,target.from,target.to,target.revision)) else emptyList())
         } },onError={app.logs.event("history_range_load_failed",error=true)})
@@ -105,11 +99,6 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val displayFrom=if(showHistory) displayedRequest.from else from
     val displayEnd=if(showHistory) displayedRequest.to else end
     val displaySession=if(showHistory) displayedRequest.session else session
-    val inventoryRows=if(showHistory) period?.inventories.orEmpty() else liveInventoryRows
-    val events=if(showHistory) period?.events.orEmpty() else liveEvents
-    val inventories by produceState<Map<String, List<InventoryEntry>>>(emptyMap(), inventoryRows) {
-        value = withContext(Dispatchers.IO) { inventoryRows.associate { it.provider to InventoryCodec.decode(it.payload) } }
-    }
     val displayed=if(showHistory) period?.observations.orEmpty() else recorded.filter { it.sessionId==liveSession }.map { it.observation() }
     @Composable fun MetricCard(metric: OemMetric) {
         val title=oemMetricTitle(metric)
@@ -168,7 +157,6 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             Button(enabled = !checking, onClick = { scope.launch { app.oem.checkNow() } }) {
                 Text(stringResource(if (checking) R.string.checking_sources else R.string.check_sources))
             }
-            Choice(mode, listOf("values" to stringResource(R.string.oem_values), "inventory" to stringResource(R.string.oem_inventory), "events" to stringResource(R.string.oem_events))) { mode = it }
         }
         item { Panel(stringResource(R.string.oem_profiles)) {
             if (profiles.isEmpty()) Text(stringResource(R.string.oem_no_observation))
@@ -177,7 +165,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                 if (showProfiles) {
                 Text(stringResource(R.string.oem_observed, formatTime(profile.checkedAt)), style = MaterialTheme.typography.bodySmall)
                 if (profile.provider == "samsung_knox") Text(stringResource(R.string.oem_license, oemCode(profile.license)), style = MaterialTheme.typography.bodySmall)
-                profile.capabilities.forEach { (c, status) -> Text("${oemCategoryTitle(c)}: ${oemCode(status.name)}", style = MaterialTheme.typography.bodySmall) }
+                profile.capabilities.filterKeys { it.active }.forEach { (c, status) -> Text("${oemCategoryTitle(c)}: ${oemCode(status.name)}", style = MaterialTheme.typography.bodySmall) }
                 }
             }
             OutlinedButton({ showProfiles = !showProfiles }) { Text(stringResource(R.string.oem_details)) }
@@ -207,9 +195,9 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             Text(stringResource(R.string.export_from_history), style = MaterialTheme.typography.bodySmall)
             }
         } }
-        if (mode == "values") {
-            item { Choice(categoryName, OemCategory.entries.map { it.name to oemCategoryTitle(it) }) { categoryName = it } }
-            val group=OemMetric.entries.filter { it.category==category }
+        run {
+            item { Choice(categoryName, OemCategory.activeEntries.map { it.name to oemCategoryTitle(it) }) { categoryName = it } }
+            val group=OemMetric.entries.filter { it.active && it.category==category }
             val folded=group.filter { m ->
                 if(showHistory) currentPeriod?.presence?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
                 else {
@@ -246,35 +234,6 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
                                 if(row.size==1) Spacer(Modifier.weight(1f))
                             }
                         }
-                    }
-                }
-            }
-        } else if (mode == "inventory") {
-            item { Choice(inventoryProvider, listOf("android_standard", "samsung_knox").map { it to oemProvider(it) }) { inventoryProvider = it } }
-            val snapshot = inventoryRows.find { it.provider == inventoryProvider }
-            val entries = inventories[inventoryProvider].orEmpty()
-            item {
-                if (snapshot == null) Text(stringResource(R.string.no_data))
-                else Text(stringResource(R.string.oem_inventory_count, entries.size, stringResource(if (snapshot.complete) R.string.oem_complete else R.string.oem_partial), formatTime(snapshot.time)))
-            }
-            items(entries, key = { "package:${it.packageName}" }) { entry -> Panel(entry.packageName) {
-                fun Boolean?.code() = when(this) { true -> "TRUE"; false -> "FALSE"; null -> "UNKNOWN" }
-                Text(stringResource(R.string.oem_package_details, entry.versionName ?: "—", entry.versionCode?.toString() ?: "—",
-                    oemCode(entry.enabled.code()), oemCode(entry.system.code()), oemCode(entry.managed.code())))
-            } }
-        } else {
-            item { Text(stringResource(R.string.oem_changes_limit)) }
-            items(events.filter { !showHistory || (it.time in displayFrom..displayEnd && (displaySession == null || it.sessionId == displaySession)) }, key = { "event:${it.id}" }) { event ->
-                Panel(oemCode(event.kind)) {
-                    val metric = OemMetric.entries.find { it.wire == event.subject }
-                    Text(metric?.let { oemMetricTitle(it) } ?: event.subject)
-                    Text("${formatTime(event.time)} · ${oemProvider(event.provider)}", style = MaterialTheme.typography.bodySmall)
-                    if (event.kind == "STATE_CHANGED") Text(stringResource(R.string.oem_change_values,
-                        eventValue(event.before, metric), eventValue(event.after, metric)))
-                    else {
-                        val before = event.before?.let { runCatching { InventoryCodec.decode(it).firstOrNull()?.versionName }.getOrNull() }
-                        val after = event.after?.let { runCatching { InventoryCodec.decode(it).firstOrNull()?.versionName }.getOrNull() }
-                        Text(stringResource(R.string.oem_change_values, before ?: "—", after ?: "—"))
                     }
                 }
             }

@@ -15,7 +15,7 @@ android {
         applicationId = "com.ahwotel"
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
+        versionCode = 31
         versionName = releaseVersion
         testInstrumentationRunner = "com.ahwotel.SafeTestRunner"
     }

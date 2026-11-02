@@ -70,7 +70,19 @@ Deliver server CA material independently through the app's **tls_ca_bundle** man
 
 Bundle maximum is 64 KiB after UTF-8 encoding of `pem`; JSON envelope maximum is 140,000 bytes. Include only public CA certificates. Generate `ref` over the exact bytes (line endings and final newline matter). Material is stored by hash in private app storage and survives a normal `adb install -r`. Wrong hash, non-CA certificates or oversize data are rejected. Missing referenced material blocks export; the app does not widen trust. Accepted full profiles keep settings read-only, including authentication/CA import; inspecting results, language and connection checks remain available. Reissue schema 1/2/3 profiles as schema 4 with an increasing revision; old formats are rejected for application, while their authenticated stored management envelope can still be explicitly released.
 
+## Administrator transport and Android policy
+
+Local Check connection in rule mode validates the selected reference key without MDM grants. Managed uploads still require a separate accepted device binding. Asynchronous rule extraction preserves newer edits and ignores obsolete results. Binding replacement and sender generation changes share one lock; binding-only rotation retains queued telemetry.
+
+For current Android-to-Prometheus acceptance, run instrumentation with `--mtls-lab-endpoint https://127.0.0.1:14318/v1/metrics`, then `python3 scripts/check-mtls-android.py emulator-5554 --run artifacts/review-fixes36/android.run.json` (use the manifest beside your report). The runner generates the run ID; the checker requires successful instrumentation and matches every original Room point for that run/session. Older result files are not supported. Use an isolated Collector with the current generated test APK certificates and ADB reverse; stop it and remove the reverse after testing.
+
+The administrator chooses transport protection. `allowHttp` is false by default; enabling it explicitly permits unencrypted telemetry and is an accepted deployment risk (ASPM 114496), not a false positive. None means no client certificate authentication: it can still use HTTPS with normal server verification. mTLS always requires HTTPS and never downgrades to HTTP.
+
+Android 8+ remains supported. Empty MainActivity task affinity and disabled task reparenting are additional hardening, not a complete StrandHogg 2.0 fix (ASPM 114497). `targetSdk=36` does not patch an old OS. Administrators must check vendor security updates through MDM; unpatched old devices retain a platform risk. See [Android's guidance](https://developer.android.com/privacy-and-security/risks/strandhogg), which identifies Android 11+ as containing the required fixes. Standard launch mode is retained for system file and KeyChain dialogs.
+
 ## Local Collector → Prometheus → Grafana lab
+
+The credential generator is a local operator/build tool, not a remotely exposed upload handler (ASPM 120211). Its output directory is deliberately selectable. It rejects `..`, symlinks/junctions in existing path components, files in place of directories, and nonempty outputs. On POSIX the output directory must belong to the current user with no group/other permissions; new directories use `0700`. Use a trusted parent directory: validation is not a sandbox against another process that can concurrently replace parent directories. The generator never changes permissions on an existing directory to make it acceptable, and never overwrites existing keys. Smoke tests use private temporary directories; Gradle uses ignored generated test assets.
 
 Prerequisites: existing [lab setup](../deploy/otel-lab/README.md), OpenSSL, correct clock and `LAB_BIND_ADDRESS`. Run from the repository root:
 

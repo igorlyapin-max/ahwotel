@@ -15,7 +15,7 @@ import tempfile
 import mtls_lab
 
 ROOT = Path(__file__).resolve().parents[1]
-LAB = Path(os.environ.get('AHWOTEL_LAB_DIR', ROOT / 'deploy/otel-lab')).resolve()
+LAB = Path(os.environ.get('AHWOTEL_LAB_DIR', ROOT / 'deploy/otel-lab')).absolute()
 STATE = LAB / '.runtime'
 POLICY = STATE / 'policy' / 'debug.json'
 

@@ -74,8 +74,15 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
                 if (clean.keySet().any { it in managementKeys }) replaceProfile(clean) else replaceLegacy(clean)
             }
             binding?.let {
-                if (preferences.getString("tlsBinding", null) != it) (context.applicationContext as? MonitorApp)?.sender?.cancel()
-                check(preferences.edit().putString("tlsBinding", it).commit())
+                if (preferences.getString("tlsBinding", null) != it) {
+                    val app = context.applicationContext as? MonitorApp
+                    val commit = {
+                        check(preferences.edit().putString("tlsBinding", it).commit())
+                        app?.clientSelection = null
+                        Unit
+                    }
+                    if (app != null) app.sender.updateIdentity(commit) else commit()
+                }
             }
             publish()
             rejected.value = false

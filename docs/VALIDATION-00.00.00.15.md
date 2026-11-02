@@ -1,5 +1,7 @@
 # AHWOTel 00.00.00.15 / code34
 
+Historical release record. Subsequent fixes for the four P2 findings and the ASPM lab-entrypoint issue are recorded in [code36 validation](VALIDATION-review-fixes-code36.md).
+
 Checked on 2026-11-02. Baseline: `v00.00.00.14`, commit `a24d1b645680649ebaa165c2d37e7a1a8240eaac`.
 
 ## Scope

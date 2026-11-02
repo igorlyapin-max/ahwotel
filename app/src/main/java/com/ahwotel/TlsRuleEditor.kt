@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -12,6 +13,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable fun TlsRuleEditor(app: MonitorApp, draft: Settings, managed: Boolean, update: (Settings) -> Unit) {
     val tls = draft.tls
     val scope = rememberCoroutineScope()
+    val currentDraft by rememberUpdatedState(draft)
+    val currentManaged by rememberUpdatedState(managed)
+    val currentUpdate by rememberUpdatedState(update)
+    var extraction by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(tls.mode, tls.selection, tls.alias, tls.rule, managed) { extraction++ }
     var status by remember(tls) { mutableStateOf<String?>(null) }
     var checks by remember(tls) { mutableStateOf<Map<String,Boolean>>(emptyMap()) }
     val runtimeStatus by app.tlsStatus.collectAsStateWithLifecycle()
@@ -28,15 +34,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
     Field(stringResource(R.string.tls_issuer), r.issuer) { change(r.copy(issuer = it.trim())) }
     Field(stringResource(R.string.tls_ou), r.ou) { change(r.copy(ou = it)) }
     Toggle(stringResource(R.string.tls_delegate), tls.delegated) { update(draft.copy(tls = tls.copy(delegated = it))) }
-    OutlinedButton(enabled = !managed, onClick = { scope.launch {
+    OutlinedButton(enabled = !managed, onClick = {
+        val operation = ++extraction
+        val original = tls
+        scope.launch {
         try {
             val rule = withContext(Dispatchers.IO) {
                 val cert = KeyChain.getCertificateChain(app, tls.alias)?.firstOrNull() ?: throw TlsFailure("tls_key_missing")
                 val template = certificateTemplate(cert).orEmpty()
                 CertificateRule(templateOid = template, policyOid = if (template.isEmpty()) certificatePolicies(cert).firstOrNull().orEmpty() else "")
             }
-            change(rule)
-        } catch (_: Exception) { status = "tls_key_missing" }
+            if (operation == extraction && !currentManaged) {
+                applyExtractedRule(currentDraft, original, rule)?.let(currentUpdate)
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { if (operation == extraction && !currentManaged && currentDraft.tls == original) status = "tls_key_missing" }
     } }) { Text(stringResource(R.string.tls_create_rule)) }
     OutlinedButton(onClick = { scope.launch {
         status = withContext(Dispatchers.IO) {
@@ -56,4 +68,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
         Text(stringResource(title) + ": " + if(ok) "✓" else "✗")
     }
     Text(stringResource(R.string.tls_rule_help), style = MaterialTheme.typography.bodySmall)
+    if (!managed) Text(stringResource(R.string.tls_preview_help), style = MaterialTheme.typography.bodySmall)
+}
+
+internal fun applyExtractedRule(current: Settings, original: TlsSettings, rule: CertificateRule): Settings? {
+    val now = current.tls
+    if (now.mode != original.mode || now.selection != original.selection || now.alias != original.alias || now.rule != original.rule) return null
+    return current.copy(tls = now.copy(rule = rule))
 }

@@ -15,4 +15,5 @@
     <string name="tls_rule_mismatch">Certificate does not match the rule or the rule is incomplete.</string>
     <string name="tls_rule_ok">Certificate matches all conditions and is valid. Key signing is verified by Check connection.</string>
     <string name="tls_rule_help">All conditions must match. Specify a template OID, policy OID or shared purpose SAN URI. Issuer/OU alone are insufficient. Creation copies a template OID, otherwise the first policy OID: confirm its purpose before export. Individual CN, SAN, serial and fingerprint are not copied. MDM supplies the local alias separately. Delegation can affect other apps: only one certificate chooser is allowed.</string>
+    <string name="tls_preview_help">Check connection uses this device’s selected reference certificate. This preview does not prove MDM deployment readiness; managed uploads still require a separate device key binding.</string>
 </resources>

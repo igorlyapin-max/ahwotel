@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Install and run instrumentation only in the isolated acceptance package."""
 import argparse
+import json
+import time
+import uuid
 import os
 from pathlib import Path
 import re
@@ -47,6 +50,11 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
     if verify_only:
         return
     adb = [str(ROOT / "scripts/adb.sh"), "-s", serial]
+    report.parent.mkdir(parents=True, exist_ok=True)
+    run_manifest = report.with_suffix('.run.json')
+    run_info = {'runId': str(uuid.uuid4()), 'serial': serial, 'startedAt': int(time.time()*1000),
+                'endpoint': mtls_lab_endpoint, 'passed': False}
+    run_manifest.write_text(json.dumps(run_info, indent=2)+'\n')
     subprocess.run(adb + ["install", "-r", str(app_apk)], check=True)
     subprocess.run(adb + ["install", "-r", str(test_apk)], check=True)
     installed = subprocess.check_output(adb + ["shell", "pm", "list", "instrumentation"], text=True)
@@ -54,6 +62,7 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
     if expected not in installed.splitlines():
         raise ValueError("installed_instrumentation_mismatch")
     args = ["shell", "am", "instrument", "-w", "-r"]
+    args += ['-e', 'runId', run_info['runId']]
     if lab_endpoint:
         args += ["-e", "labEndpoint", lab_endpoint]
     if mtls_lab_endpoint:
@@ -81,6 +90,8 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
     # am instrument can return 0 even when tests fail.
     if code or not re.search(r"^OK \([1-9][0-9]* tests?\)$", "".join(transcript), re.M):
         raise RuntimeError("instrumentation_failed; see " + str(report))
+    run_info.update(passed=True, finishedAt=int(time.time()*1000))
+    run_manifest.write_text(json.dumps(run_info, indent=2)+'\n')
 
 
 def main():

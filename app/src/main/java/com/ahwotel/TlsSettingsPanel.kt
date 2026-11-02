@@ -89,7 +89,7 @@ private tailrec fun activity(context: Context): Activity? = when (context) {
                     if (target.tls.mode == "mtls" && !target.endpoint.startsWith("https://")) throw TlsFailure("tls_https_required")
                     require(Settings.validEndpoint(target.endpoint, target.allowHttp))
                     if (target.tls.mode == "mtls") {
-                        val resolved = resolveClientAlias(app, target.tls)
+                        val resolved = if (!managed && target.tls.selection == "rule") target.tls.alias else resolveClientAlias(app, target.tls)
                         val chain = try { KeyChain.getCertificateChain(app, resolved) } catch (_: Exception) { null }
                             ?: throw TlsFailure("tls_certificate_missing")
                         val leaf = chain.firstOrNull() ?: throw TlsFailure("tls_certificate_missing")
@@ -98,7 +98,8 @@ private tailrec fun activity(context: Context): Activity? = when (context) {
                             leaf.issuerX500Principal.name, dates.format(leaf.notBefore), dates.format(leaf.notAfter))
                         withContext(Dispatchers.Main) { certificate = key to details }
                     }
-                    val code = app.sender.send(OutboxRow(createdAt = System.currentTimeMillis(), endpoint = target.endpoint, payload = byteArrayOf()), target.allowHttp, app, target.tls)
+                    val sender = if (!managed && target.tls.selection == "rule") OtlpSender(identity = { _, tls -> androidMtlsPreviewContext(app, tls) }) else app.sender
+                    val code = sender.send(OutboxRow(createdAt = System.currentTimeMillis(), endpoint = target.endpoint, payload = byteArrayOf()), target.allowHttp, app, target.tls)
                     if (code in 200..298) "tls_check_ok" else "tls_check_failed"
                 } catch (e: TlsFailure) { e.code } catch (_: Exception) { "tls_check_failed" }
             }

@@ -21,10 +21,12 @@
 ./scripts/instrument.sh emulator-5554 artifacts/mtls-rules/android-final.txt \
   com.ahwotel.MtlsAcceptanceTest,com.ahwotel.DeploymentProfileAcceptanceTest \
   --mtls-lab-endpoint https://127.0.0.1:14318/v1/metrics
-python3 scripts/check-mtls-android.py emulator-5554
+python3 scripts/check-mtls-android.py emulator-5554 --run artifacts/mtls-rules/android-final.run.json
 ```
 
 Для последней команды нужен описанный в проверке code32 отдельный loopback Collector с сертификатами **текущего** тестового APK и ADB reverse. Основной стенд остаётся в None. После теста временный Collector и перенаправление остановлены. Generated evidence: `artifacts/mtls-rules/android-final.txt`, `artifacts/mtls/native-keychain-prometheus.json`, JVM XML/lint отчёты в `app/build/`.
+
+Примечание code36: показанная команда обновлена под новый checker. Исторический прогон code33 не создавал run manifest и не является доказательством для нового формата; требуется новый запуск instrumentation.
 
 ## Ограничения приёмки
 

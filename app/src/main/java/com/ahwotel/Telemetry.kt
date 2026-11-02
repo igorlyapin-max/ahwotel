@@ -121,6 +121,11 @@ class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
         val calls = synchronized(callLock) { generation++; activeCalls.toList() }
         calls.forEach { it.cancel() }
     }
+    internal fun updateIdentity(commit: () -> Unit) = synchronized(callLock) {
+        generation++
+        activeCalls.forEach { it.cancel() }
+        commit()
+    }
 }
 
 class HttpPolicyException : IllegalArgumentException("otlp_http_not_allowed")

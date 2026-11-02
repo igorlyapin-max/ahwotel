@@ -142,7 +142,10 @@ class MtlsAcceptanceTest {
         val assets = InstrumentationRegistry.getInstrumentation().context.assets
         fun bytes(name: String) = assets.open("mtls/$name").use { it.readBytes() }
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val alias = "ahwotel-test-${System.currentTimeMillis()}"
+        // A failed prior enrollment can leave the old password dialog alive.
+        device.executeShellCommand("am force-stop com.android.certinstaller")
+        // Stable test-owned alias avoids an unbounded credential list on repeated runs.
+        val alias = "000-ahwotel-acceptance-test"
         val password = bytes("client-password.txt").toString(Charsets.UTF_8)
         val held = HeldCertificate.decode(bytes("server.crt").toString(Charsets.UTF_8) + bytes("server.key").toString(Charsets.UTF_8))
         val ca = TlsTrustStore.certificates(bytes("ca.crt")).single()
@@ -156,7 +159,7 @@ class MtlsAcceptanceTest {
                 ui.activity.startActivity(KeyChain.createInstallIntent().putExtra(KeyChain.EXTRA_PKCS12, bytes("client.p12"))
                     .putExtra(KeyChain.EXTRA_NAME, alias))
             }
-            val passwordField = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10000)
+            val passwordField = device.wait(Until.findObject(By.pkg("com.android.certinstaller").clazz("android.widget.EditText")), 10000)
             assertNotNull("Certificate installer must ask for the test P12 password", passwordField)
             passwordField!!.text = password
             device.findObject(By.res("android", "button1")).click()
@@ -197,6 +200,18 @@ class MtlsAcceptanceTest {
             assertTrue(client.issuerX500Principal == ca.subjectX500Principal)
             ui.waitUntil(10000) { ui.onAllNodes(hasText("TLS/HTTP connection accepted", substring = true)).fetchSemanticsNodes().isNotEmpty() }
             val manual = app.settings.value
+            val preview = manual.copy(tls=manual.tls.copy(selection="rule", rule=CertificateRule(sanUri="urn:ahwotel:test-device")))
+            app.saveSettings(preview)
+            ui.waitForIdle()
+            ui.waitUntil(10000) { ui.onAllNodesWithText(ui.activity.getString(R.string.tls_preview_help)).fetchSemanticsNodes().isNotEmpty() }
+            server.enqueue(MockResponse())
+            list.performScrollToNode(hasText("Check connection")); ui.onNodeWithText("Check connection").performScrollTo().assertIsDisplayed().performClick()
+            val previewRequest = server.takeRequest(30, TimeUnit.SECONDS)
+            assertNotNull(ui.onRoot().printToString(), previewRequest)
+            ui.waitUntil(10000) { ui.onAllNodes(hasText("TLS/HTTP connection accepted", substring=true)).fetchSemanticsNodes().isNotEmpty() }
+            assertEquals("tls_binding_missing", assertThrows(TlsFailure::class.java) {
+                runBlocking(Dispatchers.IO) { androidMtlsContext(app,preview.tls) }
+            }.code)
             val policyId = "tls-rule-${System.currentTimeMillis()}"
             val policySettings = manual.copy(otlpEnabled = true, tls = manual.tls.copy(alias = "", selection = "rule",
                 rule = CertificateRule(sanUri = "urn:ahwotel:test-device")))
@@ -228,6 +243,9 @@ class MtlsAcceptanceTest {
                 app.saveSettings(manual)
             }
             InstrumentationRegistry.getArguments().getString("mtlsLabEndpoint")?.let { endpoint ->
+                val runId = requireNotNull(InstrumentationRegistry.getArguments().getString("runId"))
+                val resultFile = java.io.File(app.filesDir, "mtls-lab-result.json")
+                resultFile.delete()
                 val fleetSettings = app.settings.value.copy(endpoint = endpoint, otlpEnabled = true, continuous = true,
                     intervalMs = 1000, durationSeconds = 6, enabled = setOf(CollectorKind.MEMORY),
                     tls = manual.tls.copy(alias = "", selection = "rule", rule = CertificateRule(sanUri = "urn:ahwotel:test-device")),
@@ -247,12 +265,14 @@ class MtlsAcceptanceTest {
                 }
                 assertTrue(policy(2, DesiredCollectionState.STOPPED))
                 withTimeout(60000) { while (app.state.value.sessionId != null || app.db.dao().outboxCount() > 0) delay(100) }
-                app.db.openHelper.readableDatabase.query("SELECT time,memoryAvailable FROM samples WHERE sessionId=? AND memoryAvailable IS NOT NULL ORDER BY time LIMIT 1",
+                app.db.openHelper.readableDatabase.query("SELECT time,memoryAvailable FROM samples WHERE sessionId=? AND memoryAvailable IS NOT NULL ORDER BY time",
                     arrayOf(session)).use { cursor ->
                     assertTrue(cursor.moveToFirst())
-                    java.io.File(app.filesDir, "mtls-lab-result.json").writeText(org.json.JSONObject()
-                        .put("deviceId", app.settings.value.deviceId).put("sessionId", session)
-                        .put("time", cursor.getLong(0)).put("memoryAvailable", cursor.getDouble(1)).toString())
+                    val points = org.json.JSONArray()
+                    do { points.put(org.json.JSONObject().put("time", cursor.getLong(0)).put("value", cursor.getDouble(1))) } while (cursor.moveToNext())
+                    assertTrue(points.length() >= 6)
+                    resultFile.writeText(org.json.JSONObject().put("runId", runId).put("endpoint", endpoint)
+                        .put("deviceId", app.settings.value.deviceId).put("sessionId", session).put("points", points).toString())
                 }
                 } finally {
                     app.applyManagedConfiguration(android.os.Bundle().apply {

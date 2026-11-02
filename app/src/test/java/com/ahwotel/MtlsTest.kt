@@ -153,6 +153,44 @@ class MtlsTest {
         }
     }
 
+    @Test fun identityCommitBlocksNewSendUntilBindingIsPersisted() {
+        server().use { server ->
+            val entered = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+            val current = java.util.concurrent.atomic.AtomicReference("old")
+            val sender = OtlpSender(identity = { _, _ ->
+                assertEquals("new", current.get()); mtlsContext(key, chain, ca)
+            })
+            try {
+                val update = executor.submit { sender.updateIdentity {
+                    entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)); current.set("new")
+                } }
+                assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                server.enqueue(MockResponse())
+                val send = executor.submit<Int> { sender.send(row(endpoint(server)), tls = mtls) }
+                assertThrows(java.util.concurrent.TimeoutException::class.java) { send.get(100, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                release.countDown(); update.get(5, java.util.concurrent.TimeUnit.SECONDS)
+                assertEquals(200, send.get(5, java.util.concurrent.TimeUnit.SECONDS).toInt())
+                assertThrows(IllegalStateException::class.java) { sender.updateIdentity { error("commit_failed") } }
+                assertEquals("new", current.get())
+            } finally { release.countDown(); executor.shutdownNow() }
+        }
+    }
+
+    @Test fun extractionPreservesCurrentEditsAndRejectsChangedCertificateOrRule() {
+        val original = TlsSettings("mtls", "reference", selection="rule", rule=CertificateRule(sanUri="urn:old"))
+        val current = Settings(tls=original.copy(delegated=true), endpoint="https://new.example/v1/metrics")
+        val extracted = CertificateRule(policyOid="1.2.3")
+        val result = requireNotNull(applyExtractedRule(current,original,extracted))
+        assertTrue(result.tls.delegated); assertEquals(current.endpoint,result.endpoint)
+        assertEquals(extracted,result.tls.rule)
+        for(tls in listOf(current.tls.copy(alias="other"), current.tls.copy(mode="none"),
+            current.tls.copy(selection="manual"), current.tls.copy(rule=CertificateRule(sanUri="urn:edited")))) {
+            assertNull(applyExtractedRule(current.copy(tls=tls),original,extracted))
+        }
+    }
+
     @Test fun profileAndSettingsRoundTripWithSeparatePublicCaProvisioning() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("managed_configuration", 0).edit().clear().commit()

@@ -4,19 +4,47 @@ import ipaddress
 import os
 from pathlib import Path
 import secrets
+import stat
 import subprocess
+
+
+def private_output_directory(directory):
+    # This CLI deliberately accepts an operator-selected output directory. Inspect
+    # the original components: resolve() would hide a symlink before validation.
+    directory = Path(directory)
+    if '..' in directory.parts:
+        raise ValueError('mtls_parent_path_not_allowed')
+    directory = directory.absolute()
+    components = list(reversed(directory.parents)) + [directory]
+    for path in components:
+        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+            raise ValueError('mtls_symlink_not_allowed')
+        if path.exists() and not path.is_dir():
+            raise ValueError('mtls_path_not_directory')
+    for path in components:
+        if not path.exists():
+            path.mkdir(mode=0o700)
+    info = directory.lstat()
+    if os.name == 'posix' and (info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077):
+        raise ValueError('mtls_directory_not_private')
+    if any(directory.iterdir()):
+        raise ValueError('mtls_directory_not_empty')
+    return directory
 
 
 def generate(directory, address):
     ipaddress.ip_address(address)
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    if any(directory.iterdir()):
-        raise ValueError('mtls_directory_not_empty')
+    directory = private_output_directory(directory)
     def run(*args):
         subprocess.run(['openssl', *args], cwd=directory, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     old_umask = os.umask(0o077)
+    lock = None
     try:
+        # Exclusive creation also prevents two cooperative generator invocations
+        # from both passing the empty-directory check and overwriting keys.
+        lock = (directory/'.generation.lock').open('x')
+        if any(path.name != '.generation.lock' for path in directory.iterdir()):
+            raise ValueError('mtls_directory_not_empty')
         run('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '30',
             '-keyout', 'ca.key', '-out', 'ca.crt', '-subj', '/CN=AHWOTel Local Test CA',
             '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign')
@@ -36,7 +64,12 @@ def generate(directory, address):
             (directory/name).chmod(0o644)
         (directory/'server.key').chmod(0o640)
     finally:
-        os.umask(old_umask)
+        try:
+            if lock is not None:
+                lock.close()
+                (directory/'.generation.lock').unlink()
+        finally:
+            os.umask(old_umask)
 
 
 def configure(lab, state, env):
@@ -73,4 +106,4 @@ if __name__ == '__main__':
     parser.add_argument('directory', type=Path)
     parser.add_argument('address')
     args = parser.parse_args()
-    generate(args.directory.resolve(), args.address)
+    generate(args.directory, args.address)

@@ -37,11 +37,12 @@ class CollectionPolicyTest {
         assertTrue(SettingsCodec.decode(SettingsCodec.encode(restored.copy(pauseWhenLocked = true))).pauseWhenLocked)
     }
 
-    @Test fun profileV2CarriesLockPolicyAndRejectsV1() {
+    @Test fun currentProfileCarriesLockPolicyAndRejectsOldSchemas() {
         val raw = DeploymentProfileCodec.encode(Settings(deviceId = "test", pauseWhenLocked = true), "fleet", 2)
         assertTrue(DeploymentProfileCodec.decode(raw).settings.pauseWhenLocked)
-        assertEquals(2, JSONObject(raw).getInt("schemaVersion"))
+        assertEquals(4, JSONObject(raw).getInt("schemaVersion"))
         assertThrows(IllegalArgumentException::class.java) { DeploymentProfileCodec.decode(JSONObject(raw).put("schemaVersion", 1).toString()) }
+        assertThrows(IllegalArgumentException::class.java) { DeploymentProfileCodec.decode(JSONObject(raw).put("schemaVersion", 2).toString()) }
         val retired = JSONObject(raw)
         retired.getJSONObject("settings").getJSONObject("oem").put("categories", JSONArray(listOf("INVENTORY")))
         assertThrows(IllegalArgumentException::class.java) { DeploymentProfileCodec.decode(retired.toString()) }

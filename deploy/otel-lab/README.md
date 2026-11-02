@@ -1,6 +1,8 @@
-# AHWOTel: локальный стенд без аутентификации
+# AHWOTel: локальный стенд OTLP
 
-Collector Contrib 0.160.0 → Prometheus 3.14.0 → Grafana 13.2.1. Базовые образы и Go builder закреплены по digest в явных stages `supervisor/Dockerfile`; `images.env` хранит тот же Grafana digest только для одноразовой подготовки volume. `up` собирает локальные производные образы code16 с небольшим supervisor; установка Go, systemd и доступ контейнеров к Docker socket не нужны. Устройства отправляют OTLP HTTP/protobuf; Grafana предоставляет анонимный Viewer. Сертификаты и учётная запись для просмотра не нужны. Профиль предназначен для доверенной локальной сети.
+По умолчанию используется None. Дополнительно поддерживается `OTLP_AUTH_MODE=mtls`: тот же порт становится HTTPS с обязательным клиентским сертификатом, без параллельного HTTP-входа. Настройка APK/Collector, требования к сертификатам и шаблонам, ручной выбор/SOTI: [Русский](../../docs/mtls-ru.md), [English](../../docs/mtls.md). `up --collector-only` применяет смену режима без перезапуска Prometheus/Grafana.
+
+Collector Contrib 0.160.0 → Prometheus 3.14.0 → Grafana 13.2.1. Базовые образы и Go builder закреплены по digest в явных stages `supervisor/Dockerfile`; `images.env` хранит тот же Grafana digest только для одноразовой подготовки volume. `up` собирает локальные производные образы code16 с небольшим supervisor; установка Go, systemd и доступ контейнеров к Docker socket не нужны. Устройства отправляют OTLP HTTP/protobuf; Grafana предоставляет анонимный Viewer. В режиме None сертификаты не нужны; учётная запись для просмотра Grafana не требуется в обоих режимах. Профиль предназначен для доверенной локальной сети.
 
 ## Запуск
 

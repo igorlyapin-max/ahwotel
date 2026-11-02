@@ -52,7 +52,7 @@ object DeploymentProfileCodec {
         val revision = root.integer("revision").also { require(it in 1..Int.MAX_VALUE.toLong()) }
         return Identity(id, revision, fingerprint(root))
     }
-    const val SCHEMA_VERSION = 2
+    const val SCHEMA_VERSION = 4
     const val MAX_BYTES = 128 * 1024
     private val profileId = Regex("[A-Za-z0-9._-]{1,64}")
     private val topKeys = setOf("schemaVersion", "profileId", "revision", "desiredState", "auth", "settings")
@@ -69,6 +69,7 @@ object DeploymentProfileCodec {
         desiredState: DesiredCollectionState = DesiredCollectionState.STOPPED): String {
         require(id.matches(profileId)) { "invalid_profile_id" }
         require(revision in 1..Int.MAX_VALUE.toLong()) { "invalid_profile_revision" }
+        require(settings.valid()) { "invalid_configuration" }
         validateDesiredState(desiredState, settings)
         val portable = portableSettings(settings)
         return JSONObject()
@@ -76,7 +77,7 @@ object DeploymentProfileCodec {
             .put("profileId", id)
             .put("revision", revision)
             .put("desiredState", desiredState.name.lowercase())
-            .put("auth", JSONObject().put("mode", "none"))
+            .put("auth", TlsCodec.encode(settings.tls, portable = true))
             .put("settings", portable)
             .toString(2)
             .also { require(it.toByteArray(StandardCharsets.UTF_8).size <= MAX_BYTES) { "profile_too_large" } }
@@ -95,14 +96,18 @@ object DeploymentProfileCodec {
             else -> error("invalid_desired_state")
         }
         val auth = root.objectValue("auth")
-        require(auth.values.keys == setOf("mode") && auth.string("mode") == "none") { "unsupported_auth_mode" }
+        require(auth.values.keys == setOf("mode", "alias", "trust", "trustRef", "selection", "delegated", "rule")) { "unsupported_auth_mode" }
+        validateShape(auth, parseStrict(TlsCodec.encode(TlsSettings()).toString()), "auth")
+        val tls = TlsCodec.decode(JSONObject(toJson(auth)))
+        require(tls.selection != "rule" || tls.alias.isEmpty())
+        require(tls.valid()) { "unsupported_auth_mode" }
         val portable = root.objectValue("settings")
         val template = parseStrict(portableSettings(Settings(deviceId = "template")).toString()) as StrictJson.ObjectValue
         validateShape(portable, template, "settings")
         val complete = JSONObject(toJson(portable))
             .put("language", "en")
             .put("deviceId", "profile-placeholder")
-            .put("verboseUntil", 0)
+            .put("verboseUntil", 0).put("tls", TlsCodec.encode(tls))
         complete.getJSONObject("selfTelemetry").put("debugUntil", 0)
         val categories = complete.getJSONObject("oem").getJSONArray("categories")
         require((0 until categories.length()).all { index ->
@@ -143,6 +148,7 @@ object DeploymentProfileCodec {
             selfTelemetry = source.selfTelemetry.copy(debugUntil = 0),
         )
         return JSONObject(SettingsCodec.encode(safe)).apply {
+            remove("tls")
             remove("language")
             remove("deviceId")
             remove("verboseUntil")

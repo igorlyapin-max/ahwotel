@@ -51,10 +51,19 @@ class MonitorApp : Application() {
         internal set
     val uploads = UploadScheduler(this)
     val ready = CompletableDeferred<Unit>()
+    @Volatile internal var clientSelection: ClientSelection? = null
+    val tlsStatus = MutableStateFlow("")
 
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(costs)
+        ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                clientSelection = null
+                sender.cancel()
+                scope.launch { ready.await(); checkClientRule(); scheduleUpload() }
+            }
+        }, IntentFilter(android.security.KeyChain.ACTION_KEYCHAIN_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
         battery = BatteryTelemetry(this)
         agentTelemetry = AgentTelemetryCoordinator(this)
         db = MonitorDatabase.create(this)
@@ -90,15 +99,18 @@ class MonitorApp : Application() {
                 managed.refresh()
                 if (managed.active.value) managed.markCurrentProfilePending()
                 val effective = managed.apply(initial)
+                if (!effective.otlpEnabled || effective.endpoint != initial.endpoint || effective.tls != initial.tls) {
+                    sender.cancel()
+                    db.dao().clearOutbox()
+                }
+                // Drop packets from the old transport BEFORE persisting its replacement.
+                // A process loss after saving must not make old packets appear current.
                 if (managed.active.value) {
                     localSettings = effective
                     config.save(effective)
                 }
-                if (!effective.otlpEnabled || effective.endpoint != initial.endpoint) {
-                    sender.cancel()
-                    db.dao().clearOutbox()
-                }
                 publishSettings(effective)
+                checkClientRule()
                 db.dao().interrupt()
                 if (managed.active.value && managed.desiredState.value == DesiredCollectionState.STOPPED) {
                     persistResumeStopLocked("managed_stopped")
@@ -187,7 +199,8 @@ class MonitorApp : Application() {
             }
         }
         val previousEndpoint = settings.value.endpoint
-        if (!next.otlpEnabled || next.endpoint != previousEndpoint) sender.cancel()
+        val previousTls = settings.value.tls
+        if (!next.otlpEnabled || next.endpoint != previousEndpoint || next.tls != settings.value.tls) sender.cancel()
         exportGate.withLock { mutex.withLock {
             val old = settings.value
             require(next.valid()) { "invalid_configuration" }
@@ -199,7 +212,7 @@ class MonitorApp : Application() {
             val effective = managed.apply(local)
             // Apply a safety prohibition even when persistence is unavailable.
             if (!effective.monitoringEnabled) publishSettings(effective)
-            if (old.endpoint != next.endpoint || !next.otlpEnabled) { sender.cancel(); db.dao().clearOutbox() }
+            if (old.endpoint != effective.endpoint || old.tls != effective.tls || !effective.otlpEnabled) { sender.cancel(); db.dao().clearOutbox() }
             val timing = sessionTiming
             val updated = timing?.changedSettings(old, effective)
             if (updated != null && updated != timing) {
@@ -245,7 +258,8 @@ class MonitorApp : Application() {
             }
             logs.event("configuration_saved", diagnostic = true)
         } }
-        if (!next.otlpEnabled || next.endpoint != previousEndpoint) uploads.cancel()
+        if (!next.otlpEnabled || next.endpoint != previousEndpoint || next.tls != previousTls) uploads.cancel()
+        checkClientRule()
         maintenance()
         scheduleUpload()
     }
@@ -357,6 +371,7 @@ class MonitorApp : Application() {
     }
 
     internal suspend fun publishSettings(value: Settings) {
+        if (settings.value.tls != value.tls) { clientSelection = null; tlsStatus.value = "" }
         settings.value = value
         logs.settings = value
         if (!value.monitoringEnabled) {
@@ -364,6 +379,14 @@ class MonitorApp : Application() {
             persistResumeStopLocked("monitoring_disabled")
         }
         configureReceiver(value.sotiEnabled)
+    }
+
+    private fun checkClientRule() {
+        val tls = settings.value.tls
+        if (tls.mode != "mtls" || tls.selection != "rule") return
+        try { androidMtlsContext(this, tls); tlsStatus.value = "tls_rule_ok"; logs.event("tls_rule_ready", diagnostic = true) }
+        catch (e: TlsFailure) { tlsStatus.value = e.code; logs.event(e.code, error = true) }
+        catch (_: Exception) { tlsStatus.value = "tls_key_access_denied"; logs.event("tls_key_access_denied", error = true) }
     }
 
     internal suspend fun persistResumeStopLocked(reason: String) {
@@ -475,7 +498,8 @@ class OtlpUploadWorker(context: android.content.Context, params: WorkerParameter
                     app.db.dao().readyPending(System.currentTimeMillis())
                 } ?: run { exhausted = true; return@repeat }
                 val began = android.os.SystemClock.elapsedRealtime()
-                val code = try { app.sender.send(row, app.settings.value.allowHttp) }
+                val code = try { app.sender.send(row, app.settings.value.allowHttp, app, app.settings.value.tls) }
+                    catch (e: TlsFailure) { app.tlsStatus.value = e.code; app.logs.event(e.code, error = true); 0 }
                     catch (_: HttpPolicyException) { app.logs.event("otlp_http_not_allowed", error = true); 460 }
                     catch (_: Exception) { 0 }
                 app.costs.add(AgentMetric.UPLOADS, 1.0, row.stream)

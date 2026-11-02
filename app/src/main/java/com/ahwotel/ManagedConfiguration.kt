@@ -45,7 +45,38 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
     fun replace(bundle: Bundle): Boolean {
         transition = ManagedTransition.NONE
         return try {
-            if (bundle.keySet().any { it in managementKeys }) replaceProfile(bundle) else replaceLegacy(bundle)
+            val clean = Bundle(bundle)
+            val bindingKeys = setOf("tls_client_alias", "tls_client_profile_id", "tls_client_profile_revision")
+            val binding = if (clean.keySet().any { it in bindingKeys }) {
+                require(bindingKeys.all { clean.containsKey(it) })
+                val alias = clean.getString("tls_client_alias") ?: error("binding_alias")
+                val id = clean.getString("tls_client_profile_id") ?: error("binding_profile")
+                val revision = clean.getInt("tls_client_profile_revision")
+                require(alias.isNotBlank() && alias.length <= 256 && alias.none(Char::isISOControl) && !alias.contains('%'))
+                require(id.matches(Regex("[A-Za-z0-9._-]{1,64}")) && revision > 0)
+                JSONObject().put("alias", alias).put("id", id).put("revision", revision).toString()
+            } else null
+            bindingKeys.forEach(clean::remove)
+            val ca = clean.getString("tls_ca_bundle")?.let { raw ->
+                require(raw.toByteArray(Charsets.UTF_8).size <= 140_000)
+                val value = JSONObject(raw)
+                require(value.keys().asSequence().toSet() == setOf("ref", "pem"))
+                val bytes = value.getString("pem").toByteArray(Charsets.UTF_8)
+                TlsTrustStore.certificates(bytes)
+                require(TlsTrustStore.reference(bytes) == value.getString("ref"))
+                bytes
+            }
+            clean.remove("tls_ca_bundle")
+            // Content-addressed public material may be staged before the policy: no active
+            // trust changes until a valid profile is accepted. Failed IO cannot commit a policy.
+            ca?.let { TlsTrustStore.install(context, it) }
+            if (!(clean.isEmpty && (ca != null || binding != null))) {
+                if (clean.keySet().any { it in managementKeys }) replaceProfile(clean) else replaceLegacy(clean)
+            }
+            binding?.let {
+                if (preferences.getString("tlsBinding", null) != it) (context.applicationContext as? MonitorApp)?.sender?.cancel()
+                check(preferences.edit().putString("tlsBinding", it).commit())
+            }
             publish()
             rejected.value = false
             logs.event("managed_configuration_applied", diagnostic = true)
@@ -56,6 +87,16 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
             logs.event("managed_configuration_rejected", error = true)
             false
         }
+    }
+
+    fun clientAlias(tls: TlsSettings): String? {
+        val current = profile ?: return null
+        if (!active.value || current.settings.tls != tls) return null
+        return runCatching {
+            val binding = JSONObject(preferences.getString("tlsBinding", null) ?: return null)
+            if (binding.getString("id") != current.profileId || binding.getLong("revision") != current.revision) null
+            else binding.getString("alias")
+        }.getOrNull()
     }
 
     private fun replaceProfile(bundle: Bundle) {

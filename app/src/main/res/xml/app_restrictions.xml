@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="tls_client_alias" android:restrictionType="string" android:title="@string/tls_alias" />
+    <restriction android:key="tls_client_profile_id" android:restrictionType="string" android:title="@string/profile_id" />
+    <restriction android:key="tls_client_profile_revision" android:restrictionType="integer" android:title="@string/profile_revision" />
+    <restriction android:key="tls_ca_bundle" android:restrictionType="string" android:title="@string/tls_import" />
     <restriction android:key="management_action" android:restrictionType="string" android:title="@string/deployment_profile" />
     <restriction android:key="deployment_profile" android:restrictionType="string" android:title="@string/deployment_profile" />
     <restriction android:key="profile_id" android:restrictionType="string" android:title="@string/profile_id" />

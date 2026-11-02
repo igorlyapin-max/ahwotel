@@ -1,0 +1,18 @@
+<resources>
+    <string name="tls_rule_queue_warning">Смена правила, режима, доверия серверу или endpoint очищает очередь выгрузки. Обновление отдельной MDM-привязки ключа сохраняет очередь и отменяет старые запросы. Локальная история сохраняется.</string>
+    <string name="tls_manual">Ручной сертификат</string>
+    <string name="tls_rule">Правило сертификата</string>
+    <string name="tls_template">OID шаблона AD CS</string>
+    <string name="tls_policy">OID политики сертификата</string>
+    <string name="tls_san">Точный SAN URI назначения</string>
+    <string name="tls_issuer">DN издателя (необязательно)</string>
+    <string name="tls_ou">Subject OU (необязательно)</string>
+    <string name="tls_delegate">Разрешить делегированный доступ (только MDM)</string>
+    <string name="tls_create_rule">Создать правило из выбранного сертификата</string>
+    <string name="tls_test_rule">Проверить правило сертификата</string>
+    <string name="tls_binding_missing">Ожидается привязка ключа к действующим MDM-профилю и revision.</string>
+    <string name="tls_delegation_missing">Нет делегирования Certificate Selection или требуется Android 11 и новее.</string>
+    <string name="tls_rule_mismatch">Сертификат не соответствует правилу либо правило не заполнено.</string>
+    <string name="tls_rule_ok">Сертификат соответствует всем условиям и действителен. Подпись ключом проверяется кнопкой проверки соединения.</string>
+    <string name="tls_rule_help">Все условия должны выполняться. Укажите OID шаблона, OID политики или общий SAN URI назначения. Одних издателя/OU недостаточно. Создание копирует OID шаблона, иначе первый OID политики: подтвердите его назначение перед экспортом. Индивидуальные CN, SAN, serial и fingerprint не копируются. MDM передаёт локальный alias отдельно. Делегирование может влиять на другие приложения: допускается один обработчик выбора сертификатов.</string>
+</resources>

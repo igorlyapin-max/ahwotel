@@ -1,3 +1,6 @@
+import java.time.LocalDate
+import java.time.ZoneOffset
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -8,6 +11,19 @@ val releaseVersion = providers.fileContents(rootProject.layout.projectDirectory.
     .asText.get().trim()
 require(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]{2}").matches(releaseVersion) &&
     releaseVersion != "00.00.00.00") { "VERSION must contain a release version in XX.YY.ZZ.NN format" }
+// Ephemeral identities belong only to the isolated instrumentation APK, never to the app.
+val mtlsTestAssets = layout.buildDirectory.dir("generated/mtls-test-assets")
+val generateMtlsTestAssets = tasks.register<Exec>("generateMtlsTestAssets") {
+    inputs.file(rootProject.file("scripts/mtls_lab.py"))
+    inputs.property("validationDay", LocalDate.now(ZoneOffset.UTC).toString())
+    outputs.dir(mtlsTestAssets)
+    doFirst { mtlsTestAssets.get().asFile.apply { deleteRecursively(); mkdirs() } }
+    commandLine("python3", rootProject.file("scripts/mtls_lab.py"), mtlsTestAssets.get().dir("mtls").asFile, "127.0.0.1")
+    doLast { listOf("ca.key", "ca.srl", "client.csr", "server.csr", "client.ext", "server.ext", "client.key").forEach {
+        mtlsTestAssets.get().file("mtls/$it").asFile.delete()
+    } }
+}
+tasks.matching { it.name == "mergeAcceptanceAndroidTestAssets" }.configureEach { dependsOn(generateMtlsTestAssets) }
 android {
     namespace = "com.ahwotel"
     compileSdk = 36
@@ -15,7 +31,7 @@ android {
         applicationId = "com.ahwotel"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
+        versionCode = 34
         versionName = releaseVersion
         testInstrumentationRunner = "com.ahwotel.SafeTestRunner"
     }
@@ -37,6 +53,7 @@ android {
     packaging { resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*") }
     testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets.getByName("test").resources.srcDir("schemas")
+    sourceSets.getByName("androidTest").assets.srcDir(mtlsTestAssets)
     lint { abortOnError = true }
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }

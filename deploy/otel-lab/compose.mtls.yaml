@@ -1,0 +1,8 @@
+services:
+  collector:
+    group_add: ["${MTLS_CERT_GID:-1000}"]
+    volumes:
+      - ./.runtime/collector-mtls.yaml:/etc/otelcol/config.yaml:ro
+      - ./.runtime/mtls/server.crt:/etc/ahwotel-tls/server.crt:ro
+      - ./.runtime/mtls/server.key:/etc/ahwotel-tls/server.key:ro
+      - ./.runtime/mtls/ca.crt:/etc/ahwotel-tls/client-ca.crt:ro

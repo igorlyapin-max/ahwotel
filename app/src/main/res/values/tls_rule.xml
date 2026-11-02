@@ -1,0 +1,18 @@
+<resources>
+    <string name="tls_rule_queue_warning">Changing the rule, mode, server trust or endpoint clears pending uploads. Updating the separate MDM key binding preserves the queue and cancels old requests. Local history remains.</string>
+    <string name="tls_manual">Manual certificate</string>
+    <string name="tls_rule">Certificate rule</string>
+    <string name="tls_template">AD CS template OID</string>
+    <string name="tls_policy">Certificate policy OID</string>
+    <string name="tls_san">Exact purpose SAN URI</string>
+    <string name="tls_issuer">Issuer DN (optional)</string>
+    <string name="tls_ou">Subject OU (optional)</string>
+    <string name="tls_delegate">Allow delegated key access (MDM only)</string>
+    <string name="tls_create_rule">Create rule from selected certificate</string>
+    <string name="tls_test_rule">Check certificate rule</string>
+    <string name="tls_binding_missing">Waiting for a key binding matching the MDM profile and revision.</string>
+    <string name="tls_delegation_missing">Certificate Selection delegation is missing or Android is older than 11.</string>
+    <string name="tls_rule_mismatch">Certificate does not match the rule or the rule is incomplete.</string>
+    <string name="tls_rule_ok">Certificate matches all conditions and is valid. Key signing is verified by Check connection.</string>
+    <string name="tls_rule_help">All conditions must match. Specify a template OID, policy OID or shared purpose SAN URI. Issuer/OU alone are insufficient. Creation copies a template OID, otherwise the first policy OID: confirm its purpose before export. Individual CN, SAN, serial and fingerprint are not copied. MDM supplies the local alias separately. Delegation can affect other apps: only one certificate chooser is allowed.</string>
+</resources>

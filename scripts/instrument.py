@@ -36,11 +36,13 @@ def manifest(apk):
     return subprocess.check_output([str(analyzer), "manifest", "print", str(apk)], env=env, text=True)
 
 
-def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False, lab_endpoint=None):
+def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False, lab_endpoint=None, mtls_lab_endpoint=None):
     # Complete BOTH checks before even connecting to a device or installing an APK.
     validate_manifests(manifest(app_apk), manifest(test_apk))
     if lab_endpoint and not re.fullmatch(r"http://[A-Za-z0-9.-]+:[0-9]{1,5}/v1/metrics", lab_endpoint):
         raise ValueError("invalid_lab_endpoint")
+    if mtls_lab_endpoint and not re.fullmatch(r"https://[A-Za-z0-9.-]+:[0-9]{1,5}/v1/metrics", mtls_lab_endpoint):
+        raise ValueError("invalid_mtls_lab_endpoint")
     print(f"Verified isolated instrumentation: {TEST_PACKAGE} -> {PACKAGE}", flush=True)
     if verify_only:
         return
@@ -54,6 +56,8 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
     args = ["shell", "am", "instrument", "-w", "-r"]
     if lab_endpoint:
         args += ["-e", "labEndpoint", lab_endpoint]
+    if mtls_lab_endpoint:
+        args += ["-e", "mtlsLabEndpoint", mtls_lab_endpoint]
     if test_class:
         args += ["-e", "class", test_class]
     else:
@@ -88,12 +92,14 @@ def main():
     parser.add_argument("--test-apk", type=Path, default=ROOT / "app/build/outputs/apk/androidTest/acceptance/app-acceptance-androidTest.apk")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--lab-endpoint", help="HTTP endpoint for the opt-in real Collector acceptance test")
+    parser.add_argument("--mtls-lab-endpoint", help="HTTPS endpoint trusting the generated emulator test client CA")
     args = parser.parse_args()
     # ADB sends shell arguments as a command string; disallow shell metacharacters.
     if args.test_class and not re.fullmatch(r"[A-Za-z0-9_.#]+(?:,[A-Za-z0-9_.#]+)*", args.test_class):
         parser.error("invalid_test_filter")
     try:
-        execute(args.serial, args.report, args.test_class, args.app_apk, args.test_apk, verify_only=args.verify_only, lab_endpoint=args.lab_endpoint)
+        execute(args.serial, args.report, args.test_class, args.app_apk, args.test_apk, verify_only=args.verify_only,
+                lab_endpoint=args.lab_endpoint, mtls_lab_endpoint=args.mtls_lab_endpoint)
     except (ValueError, RuntimeError, subprocess.CalledProcessError, OSError, ET.ParseError) as error:
         print(str(error), file=sys.stderr)
         return 1

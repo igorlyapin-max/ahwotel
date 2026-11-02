@@ -2,10 +2,11 @@
 """Assert APK protobuf -> Collector -> stored Prometheus samples, including original timestamps."""
 import argparse
 import json
+import ssl
 import time
 import urllib.parse
 import urllib.request
-from otel_lab import ROOT, environment, compose, health
+from otel_lab import ROOT, STATE, environment, compose, health
 
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -18,14 +19,21 @@ def main():
     directory=ROOT/'app/build/lab-wire'
     expected=json.loads((directory/'expected.json').read_text())
     t=expected['time']/1000
-    endpoint=f"http://{env['LAB_BIND_ADDRESS']}:{env['OTLP_PORT']}/v1/metrics"
+    mtls=env.get('OTLP_AUTH_MODE', 'none')=='mtls'
+    endpoint=f"{'https' if mtls else 'http'}://{env['LAB_BIND_ADDRESS']}:{env['OTLP_PORT']}/v1/metrics"
+    if mtls:
+        context=ssl.create_default_context(cafile=str(STATE/'mtls/ca.crt'))
+        context.load_cert_chain(str(STATE/'mtls/client.crt'), str(STATE/'mtls/client.key'))
+        sender=urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
+    else:
+        sender=HTTP
     prom=f"http://127.0.0.1:{env['PROMETHEUS_PORT']}"
 
     def send(name):
         headers={'Content-Type':'application/x-protobuf'}
         if name.endswith('.gz'): headers['Content-Encoding']='gzip'
         request=urllib.request.Request(endpoint,(directory/name).read_bytes(),headers,method='POST')
-        with HTTP.open(request,timeout=15) as response:
+        with sender.open(request,timeout=15) as response:
             assert response.status==200
             # This pinned collector emits the empty partial_success message on full acceptance.
             assert response.read() in (b'',b'\x0a\x00'), 'Collector did not fully accept the fixture'
@@ -81,11 +89,11 @@ def main():
             compose(env,'start','prometheus')
         health(env)
         rows=wait_for_samples(True)
-    result={**expected,'passed':True,'durableQueueRestart':args.restart_queue,'series':rows,
+    result={**expected,'passed':True,'authMode':env.get('OTLP_AUTH_MODE','none'),'durableQueueRestart':args.restart_queue,'series':rows,
             'checks':['four APK streams','gzip','original timestamps','out-of-order points','stable series','unsupported != zero']}
     out=ROOT/'artifacts/otel-lab'
     out.mkdir(parents=True,exist_ok=True)
-    (out/'wire-smoke.json').write_text(json.dumps(result,indent=2)+'\n')
+    (out/('wire-smoke-mtls.json' if mtls else 'wire-smoke.json')).write_text(json.dumps(result,indent=2)+'\n')
     print(f"PASS: four APK streams, {len(rows)} series, timestamps and availability; durable restart={args.restart_queue}")
 
 

@@ -90,7 +90,7 @@ APK 0.2.0 обновляет 0.1.0 тем же signing key; Room 1 → 2 сох�
 
 ## OTLP — выключен по умолчанию
 
-Settings → OTLP export, endpoint вида `https://telemetry.example.org/v1/metrics`. **MVP без аутентификации**: mTLS/JWT/PKI и lifecycle credentials не реализованы. По умолчанию разрешён только HTTPS с проверкой сертификата и hostname. Для локального стенда HTTP включается отдельным переключателем; URL credentials/query и redirects запрещены в обоих режимах. Выключение разрешения HTTP при HTTP endpoint выключает OTLP и очищает очередь отправки, сохраняя историю измерений.
+Settings → OTLP export, endpoint вида `https://telemetry.example.org/v1/metrics`. Аутентификация: **None** (по умолчанию) или **mTLS** с клиентским ключом Android KeyChain. Доступны ручной выбор сертификата, управляемый MDM alias и импорт публичного УЦ сервера. mTLS требует HTTPS и никогда не понижает защиту при ошибке. По умолчанию разрешён только HTTPS с проверкой сертификата и hostname. Для локального стенда в режиме None HTTP включается отдельным переключателем; URL credentials/query и redirects запрещены. Выключение разрешения HTTP при HTTP endpoint выключает OTLP и очищает очередь отправки, сохраняя историю измерений. Настройка, требования к сертификатам, шаблоны PKI, SOTI и проверка стенда: [Русский](docs/mtls-ru.md), [English](docs/mtls.md). JWT/OIDC и автоматический enrollment не реализованы.
 
 При выключении нет отправки и нет требований к endpoint/credentials. Включение экспортирует только новые замеры. При отключении либо смене endpoint экспортная очередь очищается; локальная история остаётся. Очередь переживает перезапуск и содержит готовые protobuf bytes с исходными timestamps/identity. Лимиты по умолчанию: 24 часа/32 MiB, oldest-first. WorkManager отправляет при наличии сети с backoff; доставка at-least-once, при неоднозначном сетевом сбое возможны дубликаты. Невосстановимые 4xx отбрасываются с диагностикой; 408/429/5xx повторяются. Частичный ответ фиксируется явно.
 
@@ -104,7 +104,7 @@ UUID установки можно заменить корпоративным `
 
 ## Переносимые профили и MDM
 
-Settings → Deployment profile экспортирует и импортирует версионированный JSON без `deviceId`, языка, истории, очереди и секретов. Android managed configurations могут применить тот же JSON как устойчивую read-only политику с явными действиями `apply` и `release`. Формат, схема, правила ревизий и граница будущего mTLS описаны в [docs/deployment-profile.md](docs/deployment-profile.md).
+Settings → Deployment profile экспортирует и импортирует версионированный JSON без `deviceId`, языка, истории, очереди и секретов. Android managed configurations могут применить тот же JSON как устойчивую read-only политику с явными действиями `apply` и `release`. Формат schema 4, правила ревизий и настройки mTLS описаны в [docs/deployment-profile.md](docs/deployment-profile.md).
 
 ```bash
 ./scripts/adb.sh shell am broadcast -n com.ahwotel/.SotiCommandReceiver \

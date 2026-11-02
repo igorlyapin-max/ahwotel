@@ -1,5 +1,5 @@
 <resources>
-    <string name="profile_schema_old">Unsupported profile version. Recreate the deployment profile using schema version 2.</string>
+    <string name="profile_schema_old">Unsupported profile version. Recreate the deployment profile using schema version 4.</string>
     <string name="pause_locked">Pause collection while device is locked</string>
     <string name="paused_locked">Paused · device locked</string>
     <string name="pause_locked_help">When enabled, all measurement streams pause while the Android lock screen is active, including a swipe-only lock screen. This checks the current lock state, not whether a PIN or password is configured. Collection resumes after unlocking if other collection conditions allow it. This is independent of screen-off collection: either restriction can pause collection. The session and its timer continue; timed sessions can finish while paused. Already buffered measurements can still be stored and uploaded. Paused time creates a gap and is excluded from interval baselines. This setting does not change Performance State. Android may delay background execution. Off by default; applies immediately after saving.</string>

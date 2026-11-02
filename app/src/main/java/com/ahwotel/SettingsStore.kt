@@ -77,6 +77,7 @@ object SettingsCodec {
         put("indirectCpu", s.indirectCpu)
         put("enabled", JSONArray(s.enabled.map { it.name }))
         put("retentionDays", s.retentionDays); put("storageMiB", s.storageMiB)
+        put("tls", TlsCodec.encode(s.tls))
         put("otlpEnabled", s.otlpEnabled); put("endpoint", s.endpoint)
         put("allowHttp", s.allowHttp)
         put("queueHours", s.queueHours); put("queueMiB", s.queueMiB)
@@ -111,6 +112,7 @@ object SettingsCodec {
             indirectCpu = o.optBoolean("indirectCpu", true),
             enabled = o.getJSONArray("enabled").let { a -> (0 until a.length()).map { CollectorKind.valueOf(a.getString(it)) }.toSet() },
             retentionDays = o.getInt("retentionDays"), storageMiB = o.getInt("storageMiB"),
+            tls = o.optJSONObject("tls")?.let { TlsCodec.decode(it) } ?: TlsSettings(),
             otlpEnabled = o.getBoolean("otlpEnabled"), endpoint = o.getString("endpoint"),
             allowHttp = o.optBoolean("allowHttp", false),
             queueHours = o.getInt("queueHours"), queueMiB = o.getInt("queueMiB"),

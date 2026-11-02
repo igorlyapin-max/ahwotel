@@ -1,0 +1,22 @@
+<resources>
+    <string name="tls_title">OTLP authentication</string>
+    <string name="tls_alias">Client key alias (local selection or MDM)</string>
+    <string name="tls_choose">Choose client certificate</string>
+    <string name="tls_system">System server trust</string>
+    <string name="tls_custom">Imported server CA</string>
+    <string name="tls_ref">Server CA reference (SHA-256)</string>
+    <string name="tls_import">Import public CA bundle</string>
+    <string name="tls_check">Check connection</string>
+    <string name="tls_check_ok">TLS/HTTP connection accepted by the OTLP endpoint. This sends an empty metrics request; it does not prove persistence in Prometheus.</string>
+    <string name="tls_check_failed">Connection failed. Check endpoint, server trust, hostname, time, client certificate and server access policy.</string>
+    <string name="tls_key_denied">Client key is missing or access was denied. Select a certificate or ask MDM to grant this application access to the alias.</string>
+    <string name="tls_ca_invalid">Server CA bundle is missing or invalid. Import public CA certificates only.</string>
+    <string name="tls_expired">The client certificate chain is expired or not yet valid. Check device time and certificate renewal.</string>
+    <string name="tls_usage">Client certificate must be a non-CA RSA/EC certificate with Client Authentication EKU and signing usage.</string>
+    <string name="tls_https">mTLS requires an HTTPS endpoint.</string>
+    <string name="tls_hostname">The server certificate does not match the endpoint hostname or IP. Fix the server SAN or use the correct endpoint.</string>
+    <string name="tls_handshake">TLS handshake failed: server CA/chain/time or the server rejection of the client certificate. There is no fallback.</string>
+    <string name="tls_certificate_details">Client certificate\nSubject: %1$s\nIssuer: %2$s\nValid from: %3$s\nValid until: %4$s\nKey usability and possession are checked during the connection test. Public details remain on this screen and are not logged.</string>
+    <string name="tls_help">None is the default. mTLS proves possession of a per-device private key from Android KeyChain; the key is never exported. User selection is for pilots; MDM grants a managed alias for unattended delivery. Server trust is independent of the client certificate. A Wi-Fi credential is usable only if its purpose and application key access allow it. Key failure never falls back to None/HTTP. Local monitoring continues, and the queue remains bounded. Certificate checks do not affect Performance State.</string>
+    <string name="tls_queue_warning">Saving a different authentication mode, key alias or server trust clears pending uploads and cancels current requests. Local history stays available. Renewing a certificate under the same alias does not clear the queue.</string>
+</resources>

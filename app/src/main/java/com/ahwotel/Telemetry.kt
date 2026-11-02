@@ -76,22 +76,51 @@ class Telemetry(session: SessionRow) : AutoCloseable {
 
 class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS)
-    .followRedirects(false).followSslRedirects(false).build()) {
-    fun send(row: OutboxRow, allowHttp: Boolean = false): Int {
+    .followRedirects(false).followSslRedirects(false).build(),
+    private val identity: (android.content.Context?, TlsSettings) -> Pair<javax.net.ssl.SSLContext, javax.net.ssl.X509TrustManager> = { context, tls ->
+        androidMtlsContext(context ?: throw TlsFailure("tls_key_missing"), tls)
+    }) {
+    private val callLock = Any()
+    private val activeCalls = mutableSetOf<okhttp3.Call>()
+    private var generation = 0L
+    fun send(row: OutboxRow, allowHttp: Boolean = false, context: android.content.Context? = null, tls: TlsSettings = TlsSettings()): Int {
+        val epoch = synchronized(callLock) { generation }
+        require(tls.valid())
+        if (tls.mode == "mtls" && !row.endpoint.startsWith("https://")) throw TlsFailure("tls_https_required")
         if (row.endpoint.startsWith("http:", ignoreCase = true) && !allowHttp) throw HttpPolicyException()
         require(Settings.validEndpoint(row.endpoint, allowHttp))
         require(row.payload.size <= 1024 * 1024)
-        val request = Request.Builder().url(row.endpoint)
-            .apply { if (row.compressed) header("Content-Encoding", "gzip") }
-            .post(row.payload.toRequestBody("application/x-protobuf".toMediaType())).build()
-        return client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use response.code
-            val source = response.body?.source() ?: return@use response.code
-            source.request(OtlpResponse.MAX_BYTES + 1)
-            if (source.buffer.size > OtlpResponse.MAX_BYTES) 461 else OtlpResponse.code(source.readByteArray())
-        }
+        val activeClient = if (tls.mode == "mtls") {
+            val (ssl, trust) = identity(context, tls)
+            client.newBuilder().sslSocketFactory(ssl.socketFactory, trust).connectionPool(okhttp3.ConnectionPool()).build()
+        } else client
+        try {
+            val request = Request.Builder().url(row.endpoint)
+                .apply { if (row.compressed) header("Content-Encoding", "gzip") }
+                .post(row.payload.toRequestBody("application/x-protobuf".toMediaType())).build()
+            val call = activeClient.newCall(request)
+            synchronized(callLock) {
+                // A key lookup/signature may complete AFTER a configuration change canceled
+                // requests. Register even not-yet-executing calls so that cancel cannot miss one.
+                if (epoch != generation) throw java.io.IOException("otlp_request_cancelled")
+                activeCalls.add(call)
+            }
+            try {
+                return call.execute().use { response ->
+                    if (!response.isSuccessful) return@use response.code
+                    val source = response.body?.source() ?: return@use response.code
+                    source.request(OtlpResponse.MAX_BYTES + 1)
+                    if (source.buffer.size > OtlpResponse.MAX_BYTES) 461 else OtlpResponse.code(source.readByteArray())
+                }
+            } finally { synchronized(callLock) { activeCalls.remove(call) } }
+        } catch (e: javax.net.ssl.SSLPeerUnverifiedException) { if (tls.mode != "mtls") throw e; throw TlsFailure("tls_hostname_failed")
+        } catch (e: javax.net.ssl.SSLHandshakeException) { if (tls.mode != "mtls") throw e; throw TlsFailure("tls_handshake_failed")
+        } finally { if (activeClient !== client) activeClient.connectionPool.evictAll() }
     }
-    fun cancel() = client.dispatcher.cancelAll()
+    fun cancel() {
+        val calls = synchronized(callLock) { generation++; activeCalls.toList() }
+        calls.forEach { it.cancel() }
+    }
 }
 
 class HttpPolicyException : IllegalArgumentException("otlp_http_not_allowed")

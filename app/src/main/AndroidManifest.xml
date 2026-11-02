@@ -27,6 +27,10 @@
                 android:value="User-started device performance diagnostics with visible stop control" />
         </service>
         <receiver android:name=".SotiCommandReceiver" android:enabled="false" android:exported="true" />
+        <!-- Disabled by resource on API 26-28; the delegated receiver exists from API 29. -->
+        <receiver android:name=".TlsDelegatedReceiver" tools:targetApi="29" android:enabled="@bool/tls_delegation_supported" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true">
+            <intent-filter><action android:name="android.app.action.CHOOSE_PRIVATE_KEY_ALIAS" /></intent-filter>
+        </receiver>
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
         </receiver>

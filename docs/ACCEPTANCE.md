@@ -29,6 +29,7 @@ Evidence: результаты instrumented tests, screenshot фактическ
 - Retention age/size → удаляются старейшие данные; реальная глубина истории видна. SQLite и WAL включены в размер.
 - История 14 дней × 2 секунды (604800 замеров) → SQL aggregation возвращает ограниченное число корзин с min/max.
 - OTLP OFF → нет запросов. ON + TLS test server → protobuf и исходные timestamps без Authorization; bad certificate → отказ; reconnect → очередь отправляется без смены timestamps.
+- mTLS: KeyChain grant → пробная подпись → OTLP/HTTPS → Collector → исходное значение/время в Prometheus. Нет ключа/доверия → отказ без перехода на None; смена mode/alias/trust очищает очередь, локальный сбор продолжается. `MtlsAcceptanceTest` проверяет UI EN/RU и управление очередью; установка тестового ключа ограничена эмулятором. Подробности: [RU](mtls-ru.md), [EN](mtls.md).
 - SOTI receiver disabled/repeated START/conflicting START/STOP mismatch проверяются локальным контрактом. Реальная доставка SOTI не считается проверенной через adb.
 
 ## CPU diagnostics 0.2.0

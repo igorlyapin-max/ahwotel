@@ -42,7 +42,7 @@ class DeploymentProfileTest {
         assertEquals(0, installed.selfTelemetry.debugUntil)
     }
 
-    @Test fun rejectsUnknownDuplicateUnsupportedAuthAndTimedRunningProfile() {
+    @Test fun rejectsUnknownDuplicateIncompleteOrUnsupportedAuthAndTimedRunningProfile() {
         val raw = DeploymentProfileCodec.encode(Settings(deviceId = "reference"), "fleet", 1)
         assertThrows(IllegalArgumentException::class.java) {
             DeploymentProfileCodec.decode(JSONObject(raw).put("unknown", true).toString())
@@ -52,6 +52,9 @@ class DeploymentProfileTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             DeploymentProfileCodec.decode(JSONObject(raw).put("auth", JSONObject().put("mode", "mtls")).toString())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            DeploymentProfileCodec.decode(JSONObject(raw).apply { getJSONObject("auth").put("mode", "oidc") }.toString())
         }
         assertThrows(IllegalArgumentException::class.java) {
             DeploymentProfileCodec.encode(Settings(deviceId = "reference", continuous = false), "fleet", 2, DesiredCollectionState.RUNNING)

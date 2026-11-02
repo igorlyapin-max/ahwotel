@@ -33,7 +33,7 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
     if (preview.oem != saved.oem || preview.uploadIntervalSeconds != saved.uploadIntervalSeconds ||
         preview.backendEnvironment != saved.backendEnvironment) add(ProfileChangeSection.OEM)
     if (preview.thresholds != saved.thresholds) add(ProfileChangeSection.THRESHOLDS)
-    if (preview.otlpEnabled != saved.otlpEnabled || preview.endpoint != saved.endpoint || preview.allowHttp != saved.allowHttp ||
+    if (preview.tls != saved.tls || preview.otlpEnabled != saved.otlpEnabled || preview.endpoint != saved.endpoint || preview.allowHttp != saved.allowHttp ||
         preview.queueHours != saved.queueHours || preview.queueMiB != saved.queueMiB) add(ProfileChangeSection.OTLP)
     if (preview.sotiEnabled != saved.sotiEnabled) add(ProfileChangeSection.SOTI)
     if (preview.diagnostic != saved.diagnostic || preview.fileLogging != saved.fileLogging) add(ProfileChangeSection.DIAGNOSTICS)
@@ -164,10 +164,13 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
             Field(stringResource(R.string.raise_window), raise) { raise = it }
             Field(stringResource(R.string.recover_window), recover) { recover = it }
         } }
+        item { Panel(stringResource(R.string.tls_title)) {
+            TlsSettingsPanel(app, draft, managedActive) { draft = it }
+        } }
         item { Panel(stringResource(R.string.otlp)) {
             Toggle(stringResource(R.string.otlp), draft.otlpEnabled) { draft = draft.copy(otlpEnabled = it) }
             Text(stringResource(R.string.otlp_hint), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.otlp_auth_none), style = MaterialTheme.typography.bodySmall)
+            if (draft.tls.mode == "none") Text(stringResource(R.string.otlp_auth_none), style = MaterialTheme.typography.bodySmall)
             Toggle(stringResource(R.string.otlp_allow_http), draft.allowHttp) { draft = draft.withHttpAllowed(it) }
             Text(stringResource(R.string.otlp_http_help), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.endpoint), draft.endpoint) { draft = draft.copy(endpoint = it.trim()) }

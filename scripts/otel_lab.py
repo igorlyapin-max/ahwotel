@@ -12,6 +12,7 @@ import time
 import urllib.request
 import uuid
 import tempfile
+import mtls_lab
 
 ROOT = Path(__file__).resolve().parents[1]
 LAB = Path(os.environ.get('AHWOTEL_LAB_DIR', ROOT / 'deploy/otel-lab')).resolve()
@@ -58,6 +59,8 @@ def environment():
         raise ValueError('invalid_OUT_OF_ORDER_WINDOW')
     if values['LAB_SNAP_DOCKER'] not in ('0','1'):
         raise ValueError('invalid_LAB_SNAP_DOCKER')
+    if values.get('OTLP_AUTH_MODE', 'none') not in ('none', 'mtls'): raise ValueError('invalid_OTLP_AUTH_MODE')
+    if not values.get('MTLS_CERT_GID', '1000').isdigit(): raise ValueError('invalid_MTLS_CERT_GID')
     return {**os.environ, **values}
 
 
@@ -66,6 +69,8 @@ def compose(env, *args, capture=False, timeout=None):
            '-f', str(LAB / 'compose.yaml'), '-f', str(LAB / 'compose.local-logs.yaml')]
     if env.get('LAB_SNAP_DOCKER') == '1':
         cmd += ['-f', str(LAB / 'compose.snap-docker.yaml')]
+    if env.get('OTLP_AUTH_MODE', 'none') == 'mtls':
+        cmd += ['-f', str(LAB / 'compose.mtls.yaml')]
     cmd += list(args)
     return subprocess.run(cmd, env=env, text=True, check=True, timeout=timeout,
                           stdout=subprocess.PIPE if capture else None).stdout
@@ -77,6 +82,7 @@ def prepare(env):
     (STATE / 'prometheus.yaml').write_text(template.replace('${OUT_OF_ORDER_WINDOW}', env['OUT_OF_ORDER_WINDOW']))
     if not POLICY.exists():
         write_policy('Off') # First supervisor deployment starts Off; legacy host timer state is not reused.
+    mtls_lab.configure(LAB, STATE, env)
     compose(env, 'config', '--quiet')
 
 
@@ -186,21 +192,28 @@ def runtime_status(env):
 
 def addresses(env):
     host = env['LAB_BIND_ADDRESS']
-    print(f"APK endpoint: http://{host}:{env['OTLP_PORT']}/v1/metrics")
+    mtls = env.get('OTLP_AUTH_MODE', 'none') == 'mtls'
+    print(f"APK endpoint: {'https' if mtls else 'http'}://{host}:{env['OTLP_PORT']}/v1/metrics")
     for lang in ('en', 'ru'):
         print(f"Grafana {lang}: http://{host}:{env['GRAFANA_PORT']}/d/ahwotel-{lang}")
-    print('Authentication: None; enable Allow HTTP for a test lab in the APK.')
+    print('Authentication: mTLS; import server CA and select client key in the APK.' if mtls else
+          'Authentication: None; enable Allow HTTP for a test lab in the APK.')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['up', 'down', 'status', 'logs', 'smoke', 'debug'])
+    parser.add_argument('command', choices=['up', 'down', 'status', 'logs', 'smoke', 'debug', 'certs'])
     parser.add_argument('level', nargs='?', choices=['Off', 'Basic', 'Verbose'])
     parser.add_argument('--minutes', type=int, default=10)
     parser.add_argument('--restart-queue', action='store_true', help='Smoke: interrupt only the lab to verify durable delivery')
+    parser.add_argument('--collector-only', action='store_true', help='Up: reload the OTLP receiver without restarting Prometheus or Grafana')
     args = parser.parse_args()
     env = environment()
-    if args.command == 'up':
+    if args.command == 'certs':
+        STATE.mkdir(exist_ok=True)
+        mtls_lab.generate(STATE / 'mtls', env['LAB_BIND_ADDRESS'])
+        print('Test credentials generated in .runtime/mtls. Private keys/passwords were not printed. Set MTLS_CERT_GID to the server.key group ID.')
+    elif args.command == 'up':
         prepare(env)
         images = read_env(LAB / 'images.env')
         queue_volume = env['LAB_PROJECT_NAME'] + '-collector-queue'
@@ -210,7 +223,10 @@ def main():
                         '-v', queue_volume + ':/queue', images['GRAFANA_IMAGE'],
                         '-c', 'chown 10001:10001 /queue'], check=True)
         # Bind-mounted config content is not part of Compose's recreate hash.
-        compose(env, 'up', '-d', '--build', '--force-recreate', '--remove-orphans')
+        if args.collector_only:
+            compose(env, 'up', '-d', '--no-deps', '--force-recreate', 'collector')
+        else:
+            compose(env, 'up', '-d', '--build', '--force-recreate', '--remove-orphans')
         health(env)
         diagnostic_status(env)
         addresses(env)

@@ -44,6 +44,7 @@ data class Settings(
     val retentionDays: Int = 14,
     val storageMiB: Int = 512,
     val thresholds: Thresholds = Thresholds(),
+    val tls: TlsSettings = TlsSettings(),
     val otlpEnabled: Boolean = false,
     val allowHttp: Boolean = false,
     val endpoint: String = "",
@@ -55,7 +56,7 @@ data class Settings(
     val verboseUntil: Long = 0,
     val fileLogging: Boolean = true,
 ) {
-    fun valid(): Boolean = batterySettings.valid() && selfTelemetry.valid() && selfTelemetry.limitMiB <= storageMiB / 2 &&
+    fun valid(): Boolean = tls.valid() && (tls.mode != "mtls" || !otlpEnabled || (endpoint.startsWith("https://") && (tls.selection == "rule" || tls.alias.isNotBlank()) && (tls.trust != "custom" || tls.trustRef.isNotBlank()))) && batterySettings.valid() && selfTelemetry.valid() && selfTelemetry.limitMiB <= storageMiB / 2 &&
         oem.valid() && uploadIntervalSeconds in 0..86400 && backendEnvironment.matches(Regex("[A-Za-z0-9._-]{1,64}")) && language in setOf("en", "ru") && intervalMs in INTERVALS &&
         durationSeconds in 1..maxDurationSeconds && maxDurationSeconds in 1..604800 &&
         retentionDays in 1..90 && storageMiB in 64..4096 &&

@@ -1,20 +1,94 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ahwotel.local/schemas/deployment-profile-v1.json",
-  "title": "AHWOTel deployment profile v1",
+  "$id": "https://ahwotel.local/schemas/deployment-profile-v4.json",
+  "title": "AHWOTel deployment profile v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "profileId", "revision", "desiredState", "auth", "settings"],
   "properties": {
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 4 },
     "profileId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
     "revision": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
     "desiredState": { "enum": ["running", "stopped"] },
     "auth": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
-      "properties": { "mode": { "const": "none" } }
+      "required": [
+        "mode",
+        "alias",
+        "trust",
+        "trustRef",
+        "selection",
+        "delegated",
+        "rule"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "mtls"
+          ],
+          "description": "none (default) or mandatory mutual TLS"
+        },
+        "alias": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "trust": {
+          "enum": [
+            "system",
+            "custom"
+          ],
+          "description": "system (default) or separately provisioned public CA"
+        },
+        "trustRef": {
+          "type": "string",
+          "pattern": "^([a-f0-9]{64})?$"
+        },
+        "selection": {
+          "enum": [
+            "manual",
+            "rule"
+          ]
+        },
+        "delegated": {
+          "type": "boolean"
+        },
+        "rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "templateOid",
+            "policyOid",
+            "sanUri",
+            "issuer",
+            "ou"
+          ],
+          "properties": {
+            "templateOid": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "policyOid": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "sanUri": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "issuer": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "ou": {
+              "type": "string",
+              "maxLength": 512
+            }
+          }
+        }
+      }
     },
     "settings": { "$ref": "#/$defs/settings" }
   },

@@ -53,6 +53,7 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val latest=if(showHistory) emptyMap() else app.oem.latest.collectAsStateWithLifecycle().value
     val profiles by app.oem.profiles.collectAsStateWithLifecycle()
     val checking by app.oem.checking.collectAsStateWithLifecycle()
+    val waitingForKnox by app.oem.waitingForKnox.collectAsStateWithLifecycle()
     val settings by app.settings.collectAsStateWithLifecycle()
     val liveSessions=if(showHistory) emptyList() else remember { app.db.dao().sessions() }
         .collectAsStateWithLifecycle(initialValue = emptyList()).value
@@ -100,12 +101,21 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
     val displayEnd=if(showHistory) displayedRequest.to else end
     val displaySession=if(showHistory) displayedRequest.session else session
     val displayed=if(showHistory) period?.observations.orEmpty() else recorded.filter { it.sessionId==liveSession }.map { it.observation() }
+    val knoxEnabled = settings.oem.enabled && settings.oem.knox && category in settings.oem.categories
+    val knoxOnly = OemCoordinator.metricsFor("samsung_knox", category).toSet()
     @Composable fun MetricCard(metric: OemMetric) {
         val title=oemMetricTitle(metric)
         val rows=displayed.filter { it.metric==metric }.sortedBy { it.provider }
         if(!showHistory) {
             val checks=latest.values.filter { it.metric==metric }.sortedBy { it.provider }
-            val compact=(if(rows.isEmpty()) checks else rows).map { row ->
+            val liveRows = if (metric in knoxOnly) when {
+                !knoxEnabled || category in waitingForKnox -> emptyList()
+                checks.isNotEmpty() -> checks
+                else -> rows
+            } else if (rows.isEmpty()) checks else rows
+            val compact=if (metric in knoxOnly && knoxEnabled && category in waitingForKnox) {
+                listOf(CompactMetricValue(stringResource(R.string.oem_no_observation), "samsung_knox · OEM"))
+            } else liveRows.map { row ->
                 CompactMetricValue(if(row.status==OemStatus.AVAILABLE) oemValue(row) else "—",
                     listOf(row.provider,row.source.name).filter(String::isNotEmpty).joinToString(" · "))
             }
@@ -200,7 +210,12 @@ fun oemStringId(context: Context, key: String): Int = OemTextResources[key] ?: 0
             val group=OemMetric.entries.filter { it.active && it.category==category }
             val folded=group.filter { m ->
                 if(showHistory) currentPeriod?.presence?.find { it.metric==m.name }?.let { it.valid==0 && it.refusals==it.total }==true
-                else {
+                else if (m in knoxOnly) {
+                    val checks = latest.values.filter { it.metric == m }
+                    !knoxEnabled || (category !in waitingForKnox && checks.isNotEmpty() &&
+                        checks.all { it.status in setOf(OemStatus.DISABLED, OemStatus.UNAVAILABLE,
+                            OemStatus.UNSUPPORTED, OemStatus.PERMISSION_DENIED) })
+                } else {
                     val recorded=displayed.filter { it.metric==m }
                     val checks=latest.values.filter { it.metric==m }
                     shouldFoldLive(settings.oem.enabled,recorded.map { it.status.name },checks.map { it.status.name },

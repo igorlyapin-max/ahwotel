@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 
 enum class ManagedTransition { NONE, APPLIED, RELEASED }
+internal class ManagedKnoxUpdate(val key: String?, val activate: Boolean, val valid: Boolean)
 
 /** Accepts either the legacy primitive overlay or one authoritative deployment profile. */
 class ManagedConfiguration(private val context: Context, private val logs: Diagnostics) {
@@ -19,6 +20,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
     private var profile = profileRaw?.let { runCatching { DeploymentProfileCodec.decode(it) }.getOrNull() }
     private var verboseUntil = preferences.getLong("verboseUntil", 0)
     private var floors = loadFloors()
+    private var knoxUpdate: ManagedKnoxUpdate? = null
     var transition: ManagedTransition = ManagedTransition.NONE
         private set
     val active = MutableStateFlow(profileRaw != null)
@@ -44,8 +46,15 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
 
     fun replace(bundle: Bundle): Boolean {
         transition = ManagedTransition.NONE
+        knoxUpdate = null
         return try {
             val clean = Bundle(bundle)
+            val hasKnox = clean.containsKey("knox_license_key") || clean.containsKey("knox_license_action")
+            val knoxKey = clean.getString("knox_license_key")
+            val knoxAction = clean.getString("knox_license_action")
+            val validKnox = (!clean.containsKey("knox_license_key") || knoxKey?.let(::validKnoxKey) == true) &&
+                (!clean.containsKey("knox_license_action") || knoxAction == "activate")
+            clean.remove("knox_license_key"); clean.remove("knox_license_action")
             val bindingKeys = setOf("tls_client_alias", "tls_client_profile_id", "tls_client_profile_revision")
             val binding = if (clean.keySet().any { it in bindingKeys }) {
                 require(bindingKeys.all { clean.containsKey(it) })
@@ -70,21 +79,25 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
             // Content-addressed public material may be staged before the policy: no active
             // trust changes until a valid profile is accepted. Failed IO cannot commit a policy.
             ca?.let { TlsTrustStore.install(context, it) }
-            if (!(clean.isEmpty && (ca != null || binding != null))) {
-                if (clean.keySet().any { it in managementKeys }) replaceProfile(clean) else replaceLegacy(clean)
-            }
-            binding?.let {
-                if (preferences.getString("tlsBinding", null) != it) {
-                    val app = context.applicationContext as? MonitorApp
-                    val commit = {
-                        check(preferences.edit().putString("tlsBinding", it).commit())
-                        app?.clientSelection = null
-                        Unit
-                    }
-                    if (app != null) app.sender.updateIdentity(commit) else commit()
+            val app = context.applicationContext as? MonitorApp
+            val previousProfile = profileRaw
+            val previousBinding = preferences.getString("tlsBinding", null)
+            val replace = {
+                val profileEnvelope = clean.keySet().any { it in managementKeys }
+                if (!(clean.isEmpty && (ca != null || binding != null || hasKnox))) {
+                    if (profileEnvelope) replaceProfile(clean, binding) else replaceLegacy(clean, binding)
+                } else if (binding != null && previousBinding != binding) {
+                    check(preferences.edit().putString("tlsBinding", binding).commit())
                 }
+                val bindingChanged = binding != null && previousBinding != binding
+                val identityChanged = previousProfile != profileRaw || bindingChanged
+                if (identityChanged) app?.clearTlsIdentity()
+                publish()
+                identityChanged
             }
-            publish()
+            if (app != null) app.sender.updateIdentityIfChanged(replace) else replace()
+            // A license operation cannot change the outcome of accepting the monitoring policy.
+            knoxUpdate = ManagedKnoxUpdate(knoxKey, knoxAction == "activate", validKnox)
             rejected.value = false
             logs.event("managed_configuration_applied", diagnostic = true)
             true
@@ -96,6 +109,8 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         }
     }
 
+    internal fun takeKnoxUpdate(): ManagedKnoxUpdate? = knoxUpdate.also { knoxUpdate = null }
+
     fun clientAlias(tls: TlsSettings): String? {
         val current = profile ?: return null
         if (!active.value || current.settings.tls != tls) return null
@@ -106,7 +121,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         }.getOrNull()
     }
 
-    private fun replaceProfile(bundle: Bundle) {
+    private fun replaceProfile(bundle: Bundle, binding: String?) {
         require(bundle.keySet().all { it in managementKeys }) { "mixed_managed_formats" }
         when (bundle.getString(ACTION_KEY)) {
             "apply" -> {
@@ -130,6 +145,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
                 }
                 val editor = preferences.edit().putString("deploymentProfile", raw)
                     .putString(FLOORS_KEY, encodeFloors()).putLong("verboseUntil", nextExpiry).putString("accepted", "{}")
+                binding?.let { editor.putString("tlsBinding", it) }
                 if (!sameCurrent) editor.remove(APPLIED_ID_KEY).remove(APPLIED_REVISION_KEY).remove(APPLIED_FINGERPRINT_KEY)
                 check(editor.commit())
                 accepted = JSONObject()
@@ -148,7 +164,7 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
                 val floor = floors[id]?.revision ?: 0
                 require(id == current.profileId && releaseRevision > maxOf(current.revision, floor)) { "invalid_managed_release" }
                 floors[id] = RevisionFloor(releaseRevision, RELEASE_FINGERPRINT)
-                check(preferences.edit().remove("deploymentProfile").putString(FLOORS_KEY, encodeFloors())
+                check(preferences.edit().remove("deploymentProfile").remove("tlsBinding").putString(FLOORS_KEY, encodeFloors())
                     .remove(APPLIED_ID_KEY).remove(APPLIED_REVISION_KEY).remove(APPLIED_FINGERPRINT_KEY)
                     .putLong("verboseUntil", 0).commit())
                 profileRaw = null
@@ -160,16 +176,18 @@ class ManagedConfiguration(private val context: Context, private val logs: Diagn
         }
     }
 
-    private fun replaceLegacy(bundle: Bundle) {
+    private fun replaceLegacy(bundle: Bundle, binding: String?) {
         if (profileRaw != null && bundle.isEmpty) {
             require(profile != null) { "stored_managed_profile_invalid" }
             return
         }
         require(profileRaw == null) { "managed_profile_active" }
         val json = validate(bundle)
-        if (json.toString() != accepted.toString()) {
+        if (json.toString() != accepted.toString() || (binding != null && preferences.getString("tlsBinding", null) != binding)) {
             val nextExpiry = if (json.optString("debug_mode") == "verbose") System.currentTimeMillis() + 900_000 else 0
-            check(preferences.edit().putString("accepted", json.toString()).putLong("verboseUntil", nextExpiry).commit())
+            val editor = preferences.edit().putString("accepted", json.toString()).putLong("verboseUntil", nextExpiry)
+            binding?.let { editor.putString("tlsBinding", it) }
+            check(editor.commit())
             accepted = json
             verboseUntil = nextExpiry
         }

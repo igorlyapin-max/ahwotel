@@ -73,13 +73,20 @@ class DeploymentProfileAcceptanceTest {
         delay(500)
         assertEquals(managedSession, app.state.value.sessionId)
 
-        val stopped = DeploymentProfileCodec.encode(policySettings, profileId, 3, DesiredCollectionState.STOPPED)
+        val stoppedSettings = policySettings.copy(endpoint = "https://collector-c.example/v1/metrics")
+        val stopped = DeploymentProfileCodec.encode(stoppedSettings, profileId, 3, DesiredCollectionState.STOPPED)
+        app.db.dao().enqueue(OutboxRow(createdAt=System.currentTimeMillis(), endpoint=policySettings.endpoint,
+            payload=byteArrayOf(1), dueAt=System.currentTimeMillis()+60_000))
         assertTrue(app.applyManagedConfiguration(Bundle().apply {
             putString(ManagedConfiguration.ACTION_KEY, "apply")
             putString(ManagedConfiguration.PROFILE_KEY, stopped)
-        }))
+            putString("knox_license_key", "synthetic-knox-key")
+            putString("knox_license_action", "activate")
+        }) { _, _ -> throw java.security.KeyStoreException("fixture_write_failed") })
         withTimeout(10000) { while (app.state.value.sessionId != null) delay(50) }
         assertTrue(app.managed.isCurrentProfileApplied())
+        assertEquals(stoppedSettings.endpoint, app.settings.value.endpoint)
+        assertEquals(0L, app.db.dao().outboxCount())
         assertTrue(app.applyManagedConfiguration(Bundle().apply {
             putString(ManagedConfiguration.ACTION_KEY, "apply")
             putString(ManagedConfiguration.PROFILE_KEY, JSONObject(stopped).toString())

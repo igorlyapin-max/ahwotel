@@ -134,16 +134,23 @@ class MtlsTest {
     }
 
     @Test fun cancellationDuringKeyLookupPreventsALaterRequestWithOldConfiguration() {
-        server().use { server ->
+        for (preview in listOf(false, true)) server().use { server ->
             val entered = java.util.concurrent.CountDownLatch(1)
             val release = java.util.concurrent.CountDownLatch(1)
             val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-            val sender = OtlpSender(identity = { _, _ ->
+            val resolve = {
                 entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
                 mtlsContext(key, chain, ca)
+            }
+            val sender = OtlpSender(identity = { _, _ ->
+                check(!preview) { "preview_used_runtime_identity" }
+                resolve()
             })
             try {
-                val job = executor.submit<Int> { sender.send(row(endpoint(server)), tls = mtls) }
+                val job = executor.submit<Int> {
+                    if (preview) sender.sendForIdentity(row(endpoint(server)), false, null, mtls, sender.epoch(), resolve)
+                    else sender.send(row(endpoint(server)), tls = mtls)
+                }
                 assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
                 sender.cancel(); release.countDown()
                 val failure = assertThrows(java.util.concurrent.ExecutionException::class.java) { job.get(5, java.util.concurrent.TimeUnit.SECONDS) }

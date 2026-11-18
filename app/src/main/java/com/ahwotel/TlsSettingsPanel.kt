@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.DateFormat
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -33,11 +34,14 @@ private tailrec fun activity(context: Context): Activity? = when (context) {
     val scope = rememberCoroutineScope()
     val currentDraft by rememberUpdatedState(draft)
     val currentManaged by rememberUpdatedState(managed)
+    val transport = app.sender
+    val identityEpoch by transport.identityEpoch.collectAsStateWithLifecycle()
     var result by remember { mutableStateOf<Pair<String, String>?>(null) }
     var busy by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     var certificate by remember { mutableStateOf<Pair<String, String>?>(null) }
-    val requestKey = "${draft.tls}:${draft.endpoint}:${draft.allowHttp}"
+    val requestKey = "${draft.tls}:${draft.endpoint}:${draft.allowHttp}:$managed:$identityEpoch"
+    val currentRequestKey by rememberUpdatedState(requestKey)
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             try {
@@ -81,29 +85,44 @@ private tailrec fun activity(context: Context): Activity? = when (context) {
     OutlinedButton(enabled = !busy, onClick = {
         busy = true
         certificate = null
+        val epoch = identityEpoch
         scope.launch {
             val target = draft
             val key = requestKey
+            val preview = !managed && target.tls.mode == "mtls" && target.tls.selection == "rule"
+            val stillCurrent = {
+                app.sender === transport && app.managed.active.value == managed && currentRequestKey == key &&
+                    (!managed || (app.managed.isCurrentProfileApplied() &&
+                        app.settings.value.tls == target.tls && app.settings.value.endpoint == target.endpoint))
+            }
+            var details: String? = null
             val value = withContext(Dispatchers.IO) {
                 try {
                     if (target.tls.mode == "mtls" && !target.endpoint.startsWith("https://")) throw TlsFailure("tls_https_required")
                     require(Settings.validEndpoint(target.endpoint, target.allowHttp))
                     if (target.tls.mode == "mtls") {
-                        val resolved = if (!managed && target.tls.selection == "rule") target.tls.alias else resolveClientAlias(app, target.tls)
+                        val resolved = if (preview) target.tls.alias else resolveClientAlias(app, target.tls)
                         val chain = try { KeyChain.getCertificateChain(app, resolved) } catch (_: Exception) { null }
                             ?: throw TlsFailure("tls_certificate_missing")
                         val leaf = chain.firstOrNull() ?: throw TlsFailure("tls_certificate_missing")
                         val dates = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, Locale.forLanguageTag(target.language))
-                        val details = context.getString(R.string.tls_certificate_details, leaf.subjectX500Principal.name,
+                        details = context.getString(R.string.tls_certificate_details, leaf.subjectX500Principal.name,
                             leaf.issuerX500Principal.name, dates.format(leaf.notBefore), dates.format(leaf.notAfter))
-                        withContext(Dispatchers.Main) { certificate = key to details }
                     }
-                    val sender = if (!managed && target.tls.selection == "rule") OtlpSender(identity = { _, tls -> androidMtlsPreviewContext(app, tls) }) else app.sender
-                    val code = sender.send(OutboxRow(createdAt = System.currentTimeMillis(), endpoint = target.endpoint, payload = byteArrayOf()), target.allowHttp, app, target.tls)
+                    val resolver = if (preview) ({ androidMtlsPreviewContext(app, target.tls) }) else null
+                    val code = transport.sendForIdentity(
+                        OutboxRow(createdAt = System.currentTimeMillis(), endpoint = target.endpoint, payload = byteArrayOf()),
+                        target.allowHttp, app, target.tls, epoch, resolver, stillCurrent)
                     if (code in 200..298) "tls_check_ok" else "tls_check_failed"
                 } catch (e: TlsFailure) { e.code } catch (_: Exception) { "tls_check_failed" }
             }
-            result = key to value; busy = false
+            transport.ifCurrent(epoch) {
+                if (stillCurrent()) {
+                    result = key to value
+                    certificate = details?.let { key to it }
+                }
+            }
+            busy = false
         }
     }) { Text(stringResource(R.string.tls_check)) }
     result?.takeIf { it.first == requestKey }?.let { Text(tlsMessage(it.second)) }

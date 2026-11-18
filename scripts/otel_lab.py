@@ -210,7 +210,6 @@ def main():
     args = parser.parse_args()
     env = environment()
     if args.command == 'certs':
-        STATE.mkdir(exist_ok=True)
         mtls_lab.generate(STATE / 'mtls', env['LAB_BIND_ADDRESS'])
         print('Test credentials generated in .runtime/mtls. Private keys/passwords were not printed. Set MTLS_CERT_GID to the server.key group ID.')
     elif args.command == 'up':

@@ -155,6 +155,7 @@ internal fun deploymentProfileChangedSections(saved: Settings, preview: Settings
         item { BatterySettingsPanel(draft) { draft = it } }
         item { SelfSettingsPanel(draft) { draft = it } }
         item { OemSettingsPanel(draft, managedKeys) { draft = it } }
+        item { KnoxSettingsPanel(app, managedActive) }
         item { Panel(stringResource(R.string.thresholds)) {
             Text(stringResource(R.string.threshold_hint), style = MaterialTheme.typography.bodySmall)
             Field(stringResource(R.string.cpu), cpu) { cpu = it }

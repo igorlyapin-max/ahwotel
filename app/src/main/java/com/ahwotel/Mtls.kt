@@ -93,27 +93,26 @@ internal fun mtlsContext(key: PrivateKey, chain: Array<X509Certificate>, ca: Byt
 
 internal fun androidMtlsContext(context: Context, settings: TlsSettings): Pair<SSLContext, X509TrustManager> {
     val alias = resolveClientAlias(context, settings)
-    return keyChainContext(context, settings, alias, true)
+    return keyChainContext(context, settings, alias).first
+}
+
+internal fun verifyAndroidClientSelection(context: Context, settings: TlsSettings): ClientSelection {
+    val alias = resolveClientAlias(context, settings)
+    return ClientSelection(settings, alias, keyChainContext(context, settings, alias).second)
 }
 
 internal fun androidMtlsPreviewContext(context: Context, settings: TlsSettings): Pair<SSLContext, X509TrustManager> {
     check((context.applicationContext as? MonitorApp)?.managed?.active?.value != true)
-    return keyChainContext(context, settings, settings.alias.ifBlank { throw TlsFailure("tls_key_missing") }, false)
+    return keyChainContext(context, settings, settings.alias.ifBlank { throw TlsFailure("tls_key_missing") }).first
 }
 
-private fun keyChainContext(context: Context, settings: TlsSettings, alias: String, cache: Boolean): Pair<SSLContext, X509TrustManager> {
+private fun keyChainContext(context: Context, settings: TlsSettings, alias: String):
+    Pair<Pair<SSLContext, X509TrustManager>, Array<X509Certificate>> {
     val chain = try { KeyChain.getCertificateChain(context, alias) } catch (_: Exception) { null }
         ?: throw TlsFailure("tls_certificate_missing")
     validateClientCertificate(chain)
     if (settings.selection == "rule") settings.rule.verify(chain.first())
     val key = try { KeyChain.getPrivateKey(context, alias) } catch (_: Exception) { null }
         ?: throw TlsFailure("tls_key_access_denied")
-    return mtlsContext(key, chain, if (settings.trust == "custom") TlsTrustStore.read(context, settings.trustRef) else null).also {
-        (context.applicationContext as? MonitorApp)?.let { app ->
-            if (cache && settings.selection == "rule") {
-                app.clientSelection = ClientSelection(settings, alias, chain)
-                if (settings == app.settings.value.tls) app.tlsStatus.value = "tls_rule_ok"
-            }
-        }
-    }
+    return mtlsContext(key, chain, if (settings.trust == "custom") TlsTrustStore.read(context, settings.trustRef) else null) to chain
 }

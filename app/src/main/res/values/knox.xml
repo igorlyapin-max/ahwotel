@@ -1,0 +1,24 @@
+<resources>
+    <string name="knox_waiting_key">Activation requested. Waiting for the license key from device management.</string>
+    <string name="knox_managed_key">Device management controls the license key and activation.</string>
+    <string name="knox_title">Samsung Knox</string>
+    <string name="knox_key">Knox license key</string>
+    <string name="knox_activate">Activate Knox license</string>
+    <string name="knox_import">Import license file</string>
+    <string name="knox_refresh">Check Knox availability</string>
+    <string name="knox_api">Knox API: %1$s</string>
+    <string name="knox_key_present">A key is stored securely on this device.</string>
+    <string name="knox_key_missing">No license key configured.</string>
+    <string name="knox_not_checked">Not checked</string>
+    <string name="knox_unavailable">Knox is unavailable on this device.</string>
+    <string name="knox_ready">Key configured; activation not confirmed.</string>
+    <string name="knox_pending">Activation pending; Samsung may request consent.</string>
+    <string name="knox_active">Last activation succeeded. This does not prove access to every API.</string>
+    <string name="knox_recorded">An activation record exists; current license validity is not confirmed.</string>
+    <string name="knox_error">Activation failed. Check the code, network and app association.</string>
+    <string name="knox_timeout">No confirmed activation result received. Retry manually after checking connectivity.</string>
+    <string name="knox_error_code">Knox result code: %1$d</string>
+    <string name="knox_permissions">Permissions in last confirmed callback: %1$d</string>
+    <string name="knox_import_error">Could not import the key. Use a UTF-8 text file up to 4096 bytes.</string>
+    <string name="knox_help">KPE licenses this APK separately from SOTI. Import a key, then activate explicitly; repeated MDM delivery does not reactivate the same key. License status and granted permissions are separate from measured API availability. No key is exported in profiles, telemetry or logs. The four storage APIs are deprecated from Knox API 35 and may be unavailable. CPU, temperature and battery wear are not unlocked automatically. Managed settings are read-only; the administrator supplies the key and activation action separately.</string>
+</resources>

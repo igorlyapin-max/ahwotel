@@ -31,7 +31,7 @@ android {
         applicationId = "com.ahwotel"
         minSdk = 26
         targetSdk = 36
-        versionCode = 37
+        versionCode = 41
         versionName = releaseVersion
         testInstrumentationRunner = "com.ahwotel.SafeTestRunner"
     }
@@ -58,6 +58,14 @@ android {
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
+    val prepareKnox = tasks.register<Exec>("prepareKnoxSdk") {
+        inputs.file(rootProject.file(".tools/knox/Knox-SDK-3.13-(API-level-40).zip"))
+        inputs.file(rootProject.file("scripts/knox-sdk.sha256"))
+        inputs.file(rootProject.file("scripts/prepare-knox-sdk.py"))
+        outputs.file(layout.buildDirectory.file("knox/knoxsdk.jar"))
+        commandLine("python3", rootProject.file("scripts/prepare-knox-sdk.py"))
+    }
+    compileOnly(files(layout.buildDirectory.file("knox/knoxsdk.jar")).builtBy(prepareKnox))
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material3:material3")

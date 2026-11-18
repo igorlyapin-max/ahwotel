@@ -16,6 +16,7 @@
         <uses-library android:name="com.samsung.android.knox.knoxsdk" android:required="false" />
         <meta-data android:name="android.content.APP_RESTRICTIONS" android:resource="@xml/app_restrictions" />
         <meta-data android:name="com.samsung.android.knox.license.support.selectivePermissions" android:value="true" />
+        <meta-data android:name="com.samsung.knoxlicense.permissions" android:value="true" />
         <!-- Task hardening; StrandHogg 2.0 additionally requires OS security patches. -->
         <activity android:name=".MainActivity" android:exported="true"
             android:taskAffinity="" android:allowTaskReparenting="false">
@@ -29,6 +30,9 @@
                 android:value="User-started device performance diagnostics with visible stop control" />
         </service>
         <receiver android:name=".SotiCommandReceiver" android:enabled="false" android:exported="true" />
+        <receiver android:name=".KnoxLicenseReceiver" android:exported="true">
+            <intent-filter><action android:name="com.samsung.android.knox.intent.action.KNOX_LICENSE_STATUS" /></intent-filter>
+        </receiver>
         <!-- Disabled by resource on API 26-28; the delegated receiver exists from API 29. -->
         <receiver android:name=".TlsDelegatedReceiver" tools:targetApi="29" android:enabled="@bool/tls_delegation_supported" android:permission="android.permission.BIND_DEVICE_ADMIN" android:exported="true">
             <intent-filter><action android:name="android.app.action.CHOOSE_PRIVATE_KEY_ALIAS" /></intent-filter>

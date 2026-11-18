@@ -82,16 +82,29 @@ class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
     }) {
     private val callLock = Any()
     private val activeCalls = mutableSetOf<okhttp3.Call>()
-    private var generation = 0L
-    fun send(row: OutboxRow, allowHttp: Boolean = false, context: android.content.Context? = null, tls: TlsSettings = TlsSettings()): Int {
-        val epoch = synchronized(callLock) { generation }
+    private val generation = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    internal val identityEpoch: kotlinx.coroutines.flow.StateFlow<Long> get() = generation
+    internal fun epoch() = generation.value
+
+    fun send(row: OutboxRow, allowHttp: Boolean = false, context: android.content.Context? = null,
+        tls: TlsSettings = TlsSettings()): Int =
+        sendForIdentity(row, allowHttp, context, tls, epoch())
+
+    internal fun sendForIdentity(row: OutboxRow, allowHttp: Boolean, context: android.content.Context?,
+        tls: TlsSettings, epoch: Long,
+        preview: (() -> Pair<javax.net.ssl.SSLContext, javax.net.ssl.X509TrustManager>)? = null,
+        allowed: () -> Boolean = { true }): Int {
+        fun checkCurrent() {
+            if (epoch != generation.value || !allowed()) throw java.io.IOException("otlp_request_cancelled")
+        }
+        synchronized(callLock) { checkCurrent() }
         require(tls.valid())
         if (tls.mode == "mtls" && !row.endpoint.startsWith("https://")) throw TlsFailure("tls_https_required")
         if (row.endpoint.startsWith("http:", ignoreCase = true) && !allowHttp) throw HttpPolicyException()
         require(Settings.validEndpoint(row.endpoint, allowHttp))
         require(row.payload.size <= 1024 * 1024)
         val activeClient = if (tls.mode == "mtls") {
-            val (ssl, trust) = identity(context, tls)
+            val (ssl, trust) = preview?.invoke() ?: identity(context, tls)
             client.newBuilder().sslSocketFactory(ssl.socketFactory, trust).connectionPool(okhttp3.ConnectionPool()).build()
         } else client
         try {
@@ -102,7 +115,7 @@ class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
             synchronized(callLock) {
                 // A key lookup/signature may complete AFTER a configuration change canceled
                 // requests. Register even not-yet-executing calls so that cancel cannot miss one.
-                if (epoch != generation) throw java.io.IOException("otlp_request_cancelled")
+                checkCurrent()
                 activeCalls.add(call)
             }
             try {
@@ -118,13 +131,21 @@ class OtlpSender(private val client: OkHttpClient = OkHttpClient.Builder()
         } finally { if (activeClient !== client) activeClient.connectionPool.evictAll() }
     }
     fun cancel() {
-        val calls = synchronized(callLock) { generation++; activeCalls.toList() }
-        calls.forEach { it.cancel() }
+        updateIdentity {}
+    }
+    private fun invalidateLocked() {
+        generation.value++
+        activeCalls.forEach { it.cancel() }
     }
     internal fun updateIdentity(commit: () -> Unit) = synchronized(callLock) {
-        generation++
-        activeCalls.forEach { it.cancel() }
+        invalidateLocked()
         commit()
+    }
+    internal fun updateIdentityIfChanged(commit: () -> Boolean) = synchronized(callLock) {
+        if (commit()) invalidateLocked()
+    }
+    internal fun ifCurrent(epoch: Long, commit: () -> Unit) = synchronized(callLock) {
+        if (epoch == generation.value) commit()
     }
 }
 

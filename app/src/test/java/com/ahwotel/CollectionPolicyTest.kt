@@ -58,7 +58,9 @@ class CollectionPolicyTest {
             assertTrue(AndroidStandardProvider(context).collect(category).observations.isEmpty())
             assertTrue(SamsungKnoxProvider(context, bridge).collect(category).observations.isEmpty())
         }
-        assertTrue(KnoxCapabilityRegistry.entries.isEmpty())
+        assertEquals(setOf(OemMetric.KNOX_INTERNAL_TOTAL,OemMetric.KNOX_INTERNAL_AVAILABLE,
+            OemMetric.KNOX_EXTERNAL_TOTAL,OemMetric.KNOX_EXTERNAL_AVAILABLE),KnoxCapabilityRegistry.entries.map { it.call.metric }.toSet())
+        assertTrue(KnoxCapabilityRegistry.entries.all { it.call.accessor=="getDeviceInventory" && it.call.metric.category==OemCategory.DEVICE })
         assertFalse(OemMetric.PACKAGE_COUNT.active)
         assertFalse(OemMetric.SCREEN_LOCK.active)
     }

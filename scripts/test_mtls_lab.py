@@ -125,7 +125,7 @@ class MtlsLabTest(unittest.TestCase):
             env['AHWOTEL_LAB_DIR'] = str(link)
             result = subprocess.run([sys.executable, str(Path(otel_lab.__file__)), 'certs'], env=env, capture_output=True)
             self.assertNotEqual(0, result.returncode)
-            self.assertFalse((real/'.runtime/mtls').exists())
+            self.assertFalse((real/'.runtime').exists())
 
 
 if __name__ == '__main__': unittest.main()

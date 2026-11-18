@@ -19,6 +19,10 @@ enum class KnoxCall(val metric: OemMetric, val accessor: String, val method: Str
     VPN(OemMetric.VPN_POLICY, "getRestrictionPolicy", "isVpnAllowed", scope = OemScope.DEVICE),
     LOCK(OemMetric.SCREEN_LOCK, "getDeviceInventory", "isDeviceSecure"),
     PACKAGES(OemMetric.PACKAGE_COUNT, "getApplicationPolicy", "getInstalledApplicationsIDList", requiredPermission = "com.samsung.android.knox.permission.KNOX_APP_MGMT", licensed = true),
+    INTERNAL_TOTAL(OemMetric.KNOX_INTERNAL_TOTAL, "getDeviceInventory", "getTotalCapacityInternal", scope=OemScope.DEVICE),
+    INTERNAL_AVAILABLE(OemMetric.KNOX_INTERNAL_AVAILABLE, "getDeviceInventory", "getAvailableCapacityInternal", scope=OemScope.DEVICE),
+    EXTERNAL_TOTAL(OemMetric.KNOX_EXTERNAL_TOTAL, "getDeviceInventory", "getTotalCapacityExternal", scope=OemScope.DEVICE),
+    EXTERNAL_AVAILABLE(OemMetric.KNOX_EXTERNAL_AVAILABLE, "getDeviceInventory", "getAvailableCapacityExternal", scope=OemScope.DEVICE),
 }
 
 interface KnoxBridge {
@@ -52,7 +56,7 @@ class SamsungKnoxProvider(private val context: Context, private val bridge: Knox
         private set
     override fun collect(category: OemCategory): ProviderBatch {
         if (!category.active) return ProviderBatch(emptyList())
-        val calls = emptyList<KnoxCall>()
+        val calls = KnoxCall.entries.filter { it.metric.active && it.metric.category == category }
         val metrics = (calls.map { it.metric } + when(category) {
             OemCategory.DEVICE -> listOf(OemMetric.KNOX_API, OemMetric.KNOX_VERSION)
             OemCategory.SECURITY -> listOf(OemMetric.INTEGRITY)
@@ -68,6 +72,16 @@ class SamsungKnoxProvider(private val context: Context, private val bridge: Knox
         }
         if (api < 24) return ProviderBatch(metrics.map { failure(it, OemStatus.UNSUPPORTED, OemReason.API_LEVEL) })
         val rows = mutableListOf<OemObservation>()
+        calls.forEach { call ->
+            rows += try {
+                val value = (bridge.call(call) as? Number)?.toDouble()
+                if (value == null || !value.isFinite() || value < 0) failure(call.metric, OemStatus.UNAVAILABLE, OemReason.MISSING_VALUE)
+                else OemObservation(call.metric,id,OemSource.OEM,OemScope.DEVICE,number=value)
+            } catch (e: Throwable) {
+                if (e is VirtualMachineError || e is ThreadDeath) throw e
+                val (status,reason)=classifyKnoxFailure(e); failure(call.metric,status,reason)
+            }
+        }
         if (category == OemCategory.DEVICE) {
             license = bridge.licenseState()
             rows += OemObservation(OemMetric.KNOX_API, id, OemSource.OEM, OemScope.DEVICE, number = api.toDouble())

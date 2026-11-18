@@ -25,12 +25,14 @@ data class StorageStats(val bytes: Long = 0, val samples: Long = 0, val earliest
 enum class ConfigurationOrigin { USER, MANAGED }
 
 class MonitorApp : Application() {
+    val knox by lazy { KnoxController(this) }
     val costs = AgentCosts()
     lateinit var battery: BatteryTelemetry
     lateinit var agentTelemetry: AgentTelemetryCoordinator
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val mutex = Mutex()
     val exportGate = Mutex()
+    private val managedUpdate = Mutex()
     val state = MutableStateFlow(RuntimeState())
     internal var sessionTiming: SessionTiming? = null // guarded by mutex
     internal var sessionJob: Job? = null // cancellation never depends on a storage write
@@ -59,8 +61,7 @@ class MonitorApp : Application() {
         registerActivityLifecycleCallbacks(costs)
         ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                clientSelection = null
-                sender.cancel()
+                sender.updateIdentity(::clearTlsIdentity)
                 scope.launch { ready.await(); checkClientRule(); scheduleUpload() }
             }
         }, IntentFilter(android.security.KeyChain.ACTION_KEYCHAIN_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -81,7 +82,7 @@ class MonitorApp : Application() {
                 }
             }
         }, IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
-        scope.launch {
+        scope.launch { managedUpdate.withLock {
             try {
                 var initial = config.changes.first()
                 val scopeMigration = getSharedPreferences("telemetry_scope", MODE_PRIVATE)
@@ -119,17 +120,23 @@ class MonitorApp : Application() {
                 logs.event("agent_started")
                 if (config.endpointRecovered.first()) logs.event("otlp_disabled_invalid_stored_port", error = true)
                 logs.event("diagnostic_enabled", diagnostic = true)
-                uploads.recover()
                 ready.complete(Unit)
-                maintenance()
+                // WorkManager may spend minutes pruning a large persisted work graph on open.
+                // Transport housekeeping must not gate the UI or local collection readiness.
+                scope.launch {
+                    runCatching { uploads.recover() }
+                        .onFailure { logs.event("upload_schedule_failed", error = true) }
+                }
+                runCatching { maintenance() }.onFailure { logs.event("maintenance_failed", error = true) }
                 if (managed.active.value) runCatching { reconcileManagedCollection() }
                     .onFailure { logs.event("managed_collection_pending", error = true) }
+                applyManagedKnox()
             } catch (_: Exception) {
                 logs.event("initialization_failed", error = true)
                 state.value = RuntimeState(error = "initialization_failed")
                 ready.completeExceptionally(IllegalStateException("initialization_failed"))
             }
-        }
+        } }
         scope.launch {
             runCatching { ready.await() }.getOrElse { return@launch }
             while (isActive) {
@@ -265,20 +272,63 @@ class MonitorApp : Application() {
     }
 
     suspend fun refreshManagedConfiguration() = withContext(Dispatchers.IO) {
-        if (!managed.refresh()) return@withContext
-        applyManagedTransition()
+        managedUpdate.withLock {
+            if (managed.refresh()) applyAcceptedRestrictions()
+        }
     }
 
-    internal suspend fun applyManagedConfiguration(bundle: android.os.Bundle): Boolean = withContext(Dispatchers.IO) {
-        if (!managed.replace(bundle)) return@withContext false
-        applyManagedTransition()
-        true
+    internal suspend fun applyManagedConfiguration(bundle: android.os.Bundle,
+        stageLicense: (String?, Boolean) -> Long? = { key, activate -> knox.stageManaged(key, activate) }
+    ): Boolean = withContext(Dispatchers.IO) {
+        managedUpdate.withLock {
+            if (!managed.replace(bundle)) return@withLock false
+            applyAcceptedRestrictions(stageLicense)
+            true
+        }
+    }
+
+    private suspend fun applyAcceptedRestrictions(stageLicense: (String?, Boolean) -> Long? = knox::stageManaged) {
+        try {
+            applyManagedTransition()
+        } finally {
+            applyManagedKnox(stageLicense)
+        }
+    }
+
+    private fun applyManagedKnox(stageLicense: (String?, Boolean) -> Long? = knox::stageManaged) {
+        val update = managed.takeKnoxUpdate() ?: return
+        try {
+            check(update.valid) { "knox_managed_invalid" }
+            stageLicense(update.key, update.activate)?.let { ticket ->
+                scope.launch {
+                    runCatching { knox.dispatchManaged(ticket) }.onFailure {
+                        knox.configurationFailed()
+                        logs.event("knox_managed_configuration_failed", error = true)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            knox.configurationFailed()
+            logs.event("knox_managed_configuration_failed", error = true)
+        }
+    }
+
+    internal suspend fun importLocalKnoxKey(value: String) = withContext(Dispatchers.IO) {
+        managedUpdate.withLock {
+            check(!managed.active.value) { "managed_read_only" }
+            knox.importLocalKey(value)
+        }
     }
 
     private suspend fun applyManagedTransition() {
         val before = settings.value
         val transition = managed.transition
-        if (managed.active.value) managed.markCurrentProfilePending()
+        if (managed.active.value) {
+            managed.markCurrentProfilePending()
+            if (managed.desiredState.value == DesiredCollectionState.STOPPED) {
+                enforceManagedStop()
+            }
+        }
         val requested = if (transition == ManagedTransition.RELEASED) before else managed.apply(localSettings)
         saveSettings(requested, ConfigurationOrigin.MANAGED)
         if (managed.active.value) reconcileManagedCollection()
@@ -304,11 +354,7 @@ class MonitorApp : Application() {
         val profile = managed.currentProfile() ?: return
         when (profile.desiredState) {
             DesiredCollectionState.STOPPED -> {
-                persistResumeStopLocked("managed_stopped")
-                state.value.sessionId?.let { id ->
-                    MonitoringService.stop(this, id, ActionOrigin.POLICY)
-                    withTimeout(15_000) { state.filter { it.sessionId == null }.first() }
-                }
+                enforceManagedStop()
             }
             DesiredCollectionState.RUNNING -> {
                 val existing = state.value.sessionId
@@ -334,6 +380,17 @@ class MonitorApp : Application() {
         state.value.sessionId?.let { MonitoringService.refreshPolicy(this) }
         managed.markCurrentProfileApplied()
         logs.event("managed_collection_reconciled", diagnostic = true)
+    }
+
+    private suspend fun enforceManagedStop() {
+        mutex.withLock {
+            persistResumeStopLocked("managed_stopped")
+            state.value.sessionId?.let { requestSessionStopLocked(it, "managed_stopped") }
+        }
+        state.value.sessionId?.let { id ->
+            MonitoringService.stop(this, id, ActionOrigin.POLICY)
+            withTimeout(15_000) { state.filter { it.sessionId == null }.first() }
+        }
     }
 
     private suspend fun managedSessionMatches(id: String, expected: Settings): Boolean {
@@ -371,8 +428,15 @@ class MonitorApp : Application() {
     }
 
     internal suspend fun publishSettings(value: Settings) {
-        if (settings.value.tls != value.tls) { clientSelection = null; tlsStatus.value = "" }
-        settings.value = value
+        val old = settings.value
+        if (old.oem != value.oem) oem.settingsChanged(old.oem, value.oem)
+        if (old.tls != value.tls || old.endpoint != value.endpoint ||
+            old.allowHttp != value.allowHttp || old.otlpEnabled != value.otlpEnabled) {
+            sender.updateIdentity {
+                clearTlsIdentity()
+                settings.value = value
+            }
+        } else settings.value = value
         logs.settings = value
         if (!value.monitoringEnabled) {
             sessionTiming?.let { requestSessionStopLocked(it.sessionId, "monitoring_disabled") }
@@ -381,12 +445,29 @@ class MonitorApp : Application() {
         configureReceiver(value.sotiEnabled)
     }
 
-    private fun checkClientRule() {
+    internal fun clearTlsIdentity() {
+        clientSelection = null
+        tlsStatus.value = ""
+    }
+
+    internal fun checkClientRule(
+        resolve: (TlsSettings) -> ClientSelection = { verifyAndroidClientSelection(this, it) }
+    ) {
+        val transport = sender
+        val epoch = transport.epoch()
         val tls = settings.value.tls
         if (tls.mode != "mtls" || tls.selection != "rule") return
-        try { androidMtlsContext(this, tls); tlsStatus.value = "tls_rule_ok"; logs.event("tls_rule_ready", diagnostic = true) }
-        catch (e: TlsFailure) { tlsStatus.value = e.code; logs.event(e.code, error = true) }
-        catch (_: Exception) { tlsStatus.value = "tls_key_access_denied"; logs.event("tls_key_access_denied", error = true) }
+        val result = runCatching { resolve(tls) }
+        transport.ifCurrent(epoch) {
+            if (sender === transport && settings.value.tls == tls) {
+                clientSelection = result.getOrNull()
+                val error = result.exceptionOrNull()
+                tlsStatus.value = if (error == null) "tls_rule_ok" else
+                    (error as? TlsFailure)?.code ?: "tls_key_access_denied"
+                if (error == null) logs.event("tls_rule_ready", diagnostic = true)
+                else logs.event(tlsStatus.value, error = true)
+            }
+        }
     }
 
     internal suspend fun persistResumeStopLocked(reason: String) {
@@ -493,13 +574,19 @@ class OtlpUploadWorker(context: android.content.Context, params: WorkerParameter
                 currentCoroutineContext().ensureActive()
                 if (exhausted || android.os.SystemClock.elapsedRealtime() >= stopAt) return@repeat
                 app.exportGate.withLock {
+                val transport = app.sender
+                val epoch = transport.epoch()
                 val row = app.mutex.withLock {
                     if (!app.settings.value.otlpEnabled) return@delivery Result.success()
+                    if (app.managed.active.value && !app.managed.isCurrentProfileApplied()) return@delivery Result.retry()
                     app.db.dao().readyPending(System.currentTimeMillis())
                 } ?: run { exhausted = true; return@repeat }
                 val began = android.os.SystemClock.elapsedRealtime()
-                val code = try { app.sender.send(row, app.settings.value.allowHttp, app, app.settings.value.tls) }
-                    catch (e: TlsFailure) { app.tlsStatus.value = e.code; app.logs.event(e.code, error = true); 0 }
+                val code = try { transport.sendForIdentity(row, app.settings.value.allowHttp, app, app.settings.value.tls, epoch) }
+                    catch (e: TlsFailure) {
+                        transport.ifCurrent(epoch) { app.tlsStatus.value = e.code; app.logs.event(e.code, error = true) }
+                        0
+                    }
                     catch (_: HttpPolicyException) { app.logs.event("otlp_http_not_allowed", error = true); 460 }
                     catch (_: Exception) { 0 }
                 app.costs.add(AgentMetric.UPLOADS, 1.0, row.stream)
@@ -526,8 +613,7 @@ class OtlpUploadWorker(context: android.content.Context, params: WorkerParameter
                 }
                 }
             }
-            app.uploads.reconcile()
-            Result.success()
+            if (app.uploads.reconcile(id)) Result.success() else Result.retry()
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { app.logs.event("upload_failed", error = true); Result.retry() } }
     }

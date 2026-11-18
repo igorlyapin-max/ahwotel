@@ -12,14 +12,21 @@ from otel_lab import ROOT, environment
 
 
 def validate_run(run, expected, serial):
-    assert run.get('passed') is True and run.get('finishedAt', 0) >= run['startedAt'], 'unsuccessful_run'
-    assert run['serial'] == serial and run['runId'] == expected['runId'], 'wrong_run'
-    assert run.get('endpoint') and run['endpoint'] == expected['endpoint'], 'wrong_endpoint'
-    assert expected['deviceId'] and expected['sessionId'], 'missing_identity'
+    if run.get('passed') is not True or run.get('finishedAt', 0) < run['startedAt']:
+        raise AssertionError('unsuccessful_run')
+    if run['serial'] != serial or not run['runId'] or run['runId'] != expected['runId']:
+        raise AssertionError('wrong_run')
+    if not run.get('endpoint') or run['endpoint'] != expected['endpoint']:
+        raise AssertionError('wrong_endpoint')
+    if not expected['deviceId'] or not expected['sessionId']:
+        raise AssertionError('missing_identity')
     points = expected['points']
-    assert len(points) >= 6, 'incomplete_session'
-    assert all(p['time'] > 0 and math.isfinite(p['value']) for p in points), 'invalid_point'
-    assert len({p['time'] for p in points}) == len(points), 'duplicate_time'
+    if len(points) < 6:
+        raise AssertionError('incomplete_session')
+    if not all(p['time'] > 0 and math.isfinite(p['value']) for p in points):
+        raise AssertionError('invalid_point')
+    if len({p['time'] for p in points}) != len(points):
+        raise AssertionError('duplicate_time')
 
 
 def matches(expected, result):

@@ -40,6 +40,13 @@ def manifest(apk):
 
 
 def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False, lab_endpoint=None, mtls_lab_endpoint=None):
+    if not verify_only:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        run_manifest = report.with_suffix('.run.json')
+        run_info = {'runId': str(uuid.uuid4()), 'serial': serial, 'startedAt': int(time.time()*1000),
+                    'endpoint': mtls_lab_endpoint, 'passed': False}
+        run_manifest.write_text(json.dumps(run_info, indent=2)+'\n')
+        report.write_text('')
     # Complete BOTH checks before even connecting to a device or installing an APK.
     validate_manifests(manifest(app_apk), manifest(test_apk))
     if lab_endpoint and not re.fullmatch(r"http://[A-Za-z0-9.-]+:[0-9]{1,5}/v1/metrics", lab_endpoint):
@@ -50,11 +57,6 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
     if verify_only:
         return
     adb = [str(ROOT / "scripts/adb.sh"), "-s", serial]
-    report.parent.mkdir(parents=True, exist_ok=True)
-    run_manifest = report.with_suffix('.run.json')
-    run_info = {'runId': str(uuid.uuid4()), 'serial': serial, 'startedAt': int(time.time()*1000),
-                'endpoint': mtls_lab_endpoint, 'passed': False}
-    run_manifest.write_text(json.dumps(run_info, indent=2)+'\n')
     subprocess.run(adb + ["install", "-r", str(app_apk)], check=True)
     subprocess.run(adb + ["install", "-r", str(test_apk)], check=True)
     installed = subprocess.check_output(adb + ["shell", "pm", "list", "instrumentation"], text=True)
@@ -73,7 +75,6 @@ def execute(serial, report, test_class, app_apk, test_apk, *, verify_only=False,
         # Real TalkBack requires a prepared API 35 emulator and is explicitly opt-in.
         args += ["-e", "notClass", "com.ahwotel.TalkBackHelpAcceptanceTest"]
     args += [f"{TEST_PACKAGE}/{RUNNER}"]
-    report.parent.mkdir(parents=True, exist_ok=True)
     with report.open("w") as out:
         process = subprocess.Popen(adb + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         transcript = []

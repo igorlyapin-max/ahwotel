@@ -1,0 +1,24 @@
+<resources>
+    <string name="knox_waiting_key">Запрошена активация. Ожидается лицензионный ключ от системы управления.</string>
+    <string name="knox_managed_key">Ключом и активацией управляет администратор устройства.</string>
+    <string name="knox_title">Samsung Knox</string>
+    <string name="knox_key">Лицензионный ключ Knox</string>
+    <string name="knox_activate">Активировать лицензию Knox</string>
+    <string name="knox_import">Импортировать файл лицензии</string>
+    <string name="knox_refresh">Проверить доступность Knox</string>
+    <string name="knox_api">Knox API: %1$s</string>
+    <string name="knox_key_present">Ключ защищённо сохранён на этом устройстве.</string>
+    <string name="knox_key_missing">Лицензионный ключ не задан.</string>
+    <string name="knox_not_checked">Проверка не выполнялась</string>
+    <string name="knox_unavailable">Knox недоступен на этом устройстве.</string>
+    <string name="knox_ready">Ключ задан; активация не подтверждена.</string>
+    <string name="knox_pending">Ожидание активации; Samsung может запросить согласие.</string>
+    <string name="knox_active">Последняя активация успешна. Это не подтверждает доступ ко всем API.</string>
+    <string name="knox_recorded">Есть запись активации; текущая действительность лицензии не подтверждена.</string>
+    <string name="knox_error">Активация не выполнена. Проверьте код, сеть и привязку APK.</string>
+    <string name="knox_timeout">Подтверждённый ответ активации не получен. Проверьте сеть и повторите вручную.</string>
+    <string name="knox_error_code">Код результата Knox: %1$d</string>
+    <string name="knox_permissions">Разрешений в последнем подтверждённом callback: %1$d</string>
+    <string name="knox_import_error">Не удалось импортировать ключ. Нужен текстовый UTF-8 файл до 4096 байт.</string>
+    <string name="knox_help">KPE лицензирует этот APK отдельно от SOTI. Импортируйте ключ и явно запустите активацию; повторная MDM-доставка не активирует тот же ключ заново. Статус лицензии и выданные разрешения отличаются от фактической доступности API. Ключ не попадает в профили, телеметрию и логи. Четыре API хранилища deprecated с Knox API 35 и могут быть недоступны. CPU, температуры и износ батареи автоматически не открываются. Управляемые настройки доступны только для чтения; администратор отдельно доставляет ключ и действие активации.</string>
+</resources>

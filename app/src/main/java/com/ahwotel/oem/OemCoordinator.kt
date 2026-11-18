@@ -47,6 +47,7 @@ class OemCoordinator(private val app: MonitorApp) {
     val latest = MutableStateFlow<Map<String, OemObservation>>(emptyMap())
     val profiles = MutableStateFlow<Map<String, OemProviderProfile>>(emptyMap())
     val checking = MutableStateFlow(false)
+    val waitingForKnox = MutableStateFlow<Set<OemCategory>>(emptySet())
     val generation = AtomicLong(0)
     private val providers = listOf(AndroidStandardProvider(app), SamsungKnoxProvider(app))
     private val workers = providers.associate { it.id to BoundedProviderWorker(it.id) }
@@ -56,6 +57,12 @@ class OemCoordinator(private val app: MonitorApp) {
     private val changed = ConcurrentHashMap.newKeySet<OemCategory>()
     private val failures = mutableSetOf<String>()
     private val fallbackCategories = mutableSetOf<OemCategory>()
+
+    fun settingsChanged(old: OemSettings, next: OemSettings) {
+        val enabled = if (next.enabled && next.knox) next.categories else emptySet()
+        val previouslyEnabled = if (old.enabled && old.knox) old.categories else emptySet()
+        waitingForKnox.value = waitingForKnox.value.intersect(enabled) + (enabled - previouslyEnabled)
+    }
 
     suspend fun restore() {
         latest.value = app.db.oemDao().latest().filter { OemMetric.valueOf(it.metric).active }.associate { key(it.observation()) to it.observation() }
@@ -214,6 +221,8 @@ class OemCoordinator(private val app: MonitorApp) {
                 next[key] = row
             }
             latest.value = next
+            if (provider.id == "samsung_knox" && status != ProviderState.NOT_CONFIGURED && batch.observations.isNotEmpty())
+                waitingForKnox.value = waitingForKnox.value - category
             val caps = profiles.value[provider.id]?.capabilities.orEmpty() + (category to status)
             val libraryMissing = next.values.any { it.provider == provider.id && it.metric == OemMetric.KNOX_API && it.reason == OemReason.LIBRARY_MISSING }
             val activeRows = next.values.filter { it.provider == provider.id && it.metric.category in config.categories }
@@ -252,7 +261,7 @@ class OemCoordinator(private val app: MonitorApp) {
                 OemCategory.SECURITY -> listOf(OemMetric.INTEGRITY)
                 OemCategory.RESOURCES -> listOf(OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL)
                 else -> emptyList()
-            }).distinct() else OemMetric.entries.filter { it.active && it.category == category && it !in setOf(OemMetric.KNOX_API, OemMetric.KNOX_VERSION, OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL) }
+            }).distinct() else OemMetric.entries.filter { it.active && it.category == category && !it.name.startsWith("KNOX_") && it !in setOf(OemMetric.OEM_SYSTEM_CPU, OemMetric.OEM_THERMAL) }
         fun encodeProfile(p: OemProviderProfile) = JSONObject().put("provider", p.provider).put("state", p.state.name)
             .put("checkedAt", p.checkedAt).put("license", p.license).put("capabilities", JSONObject().apply { p.capabilities.forEach { (c, s) -> put(c.name, s.name) } }).toString()
         fun decodeProfile(raw: String): OemProviderProfile = JSONObject(raw).let { o -> OemProviderProfile(o.getString("provider"), ProviderState.valueOf(o.getString("state")),

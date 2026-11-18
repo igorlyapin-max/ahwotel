@@ -1,5 +1,7 @@
 # AHWOTel — Android Performance Monitor
 
+Samsung Knox: [руководство заказчика](docs/knox-customer-guide-ru.md) · [customer guide](docs/knox-customer-guide-en.md) · [SDK/API matrix](docs/knox-api-matrix.md).
+
 Автономный Android APK: системные метрики, исходные замеры в SQLite, графики и диагностические сессии. Android 8+ (`minSdk=26`, `targetSdk=36`). Бизнес-приложение не изменяется.
 
 Интерфейс: **English по умолчанию**, переключение на **Русский** в Settings → Interface language → Save settings. Язык устройства не меняет первоначальный выбор приложения.
@@ -33,6 +35,8 @@ APK этого этапа: [AHWOTel-00.00.00.01-code6-debug.apk](artifacts/AHWOT
 ## Сборка
 
 Нужны JDK 17, Android SDK Platform 36, Build-Tools 35.0.0/36.0.0, platform-tools. Gradle 8.11.1 закреплён wrapper, зависимости закреплены в Gradle-файлах. Локальные инструменты и кэши `.tools/` не входят в Git.
+
+Перед сборкой и JVM-тестами скачайте [Knox SDK 3.13 / API 40](docs/knox-customer-guide-ru.md#сборка-и-доказательства) в `.tools/knox/Knox-SDK-3.13-(API-level-40).zip`. Gradle сверит архив с [SHA-256](scripts/knox-sdk.sha256) и подключит SDK только на этапе компиляции.
 
 ```bash
 export JAVA_HOME=/path/to/jdk-17

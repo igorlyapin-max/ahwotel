@@ -229,9 +229,23 @@ class MtlsAcceptanceTest {
                 })
                 app.db.dao().enqueue(OutboxRow(id = -33001, createdAt = System.currentTimeMillis(), endpoint = manual.endpoint,
                     payload = byteArrayOf(), dueAt = System.currentTimeMillis() + 3600000))
+                val oldLookup = java.util.concurrent.CountDownLatch(1)
+                val allowOldLookup = java.util.concurrent.CountDownLatch(1)
+                val obsolete = async(Dispatchers.IO) {
+                    app.checkClientRule { tls ->
+                        oldLookup.countDown()
+                        check(allowOldLookup.await(15, TimeUnit.SECONDS))
+                        ClientSelection(tls, alias, emptyArray())
+                    }
+                }
+                assertTrue(withContext(Dispatchers.IO) { oldLookup.await(10, TimeUnit.SECONDS) })
                 assertTrue(app.applyManagedConfiguration(android.os.Bundle().apply {
                     putString("tls_client_alias", "renewal-pending"); putString("tls_client_profile_id", policyId); putInt("tls_client_profile_revision", 1)
                 }))
+                allowOldLookup.countDown()
+                obsolete.await()
+                assertEquals("tls_key_access_denied", app.tlsStatus.value)
+                assertNull(app.clientSelection)
                 assertEquals(1L, app.db.dao().outboxCount())
                 assertEquals("tls_key_access_denied", assertThrows(TlsFailure::class.java) {
                     runBlocking(Dispatchers.IO) { androidMtlsContext(app, app.settings.value.tls) }
